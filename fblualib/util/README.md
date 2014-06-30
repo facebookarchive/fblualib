@@ -165,6 +165,26 @@ Callers may register "handlers" that will be called when certain probes
 and `remove_handler`; handlers are called as `handler(key, args,
 nesting_level)`.
 
+## `fb.util.dbg`: Environment-controlled debug output
+
+Debugging code can be valuable, but verbose. The dbg module provides a
+granular, hierarchical facility for selecting which debug output to produce
+at runtime. The DBG environment variable consists of a comma-separated list
+of module=threshold pairs. The dbg lua facility provides a factory for
+module-specific print functions:
+
+  local dbg = reqire('fb.util.dbg')
+  local dprint = dbg.new('myModule')
+
+  ...
+
+  dprint(1, "sort of verbose") -- A
+  dprint(10, "verbose")        -- B
+
+Ordinarily the dprint's are silent. When the DBG environment variable is
+set to 'myModule=1', the print statement labeled 'A' will start firing.
+When it is set to 'myModule=100', both A and B will fire.
+
 ## `fb.util.timing`: Timing handler for tracing
 
 This module implements a handler for the tracing module (see above) that
