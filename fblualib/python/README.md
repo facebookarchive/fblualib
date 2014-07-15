@@ -34,9 +34,9 @@ print(py.eval('foo(a) + 10'), {a = 42})  -- prints 53
 
 There are a few things to note in the example above:
 * Python is sensitive to indentation. When executing code, especially multiple
-  lines, use the multiline string syntax): strings start with `[=...=[`, where
+  lines, use the multiline string syntax: strings start with `[=...=[`, where
   you can have an arbitrary number of equal signs between the open brackets, and
-  end with a matching `[=...=[` sequence with the same number of equal signs
+  end with a matching `]=...=]` sequence with the same number of equal signs
   between the closed brackets.
 * Values are converted magically between Lua and Python. The eval call creates
   a local Python environment with one variable (named `a`) that has the value
