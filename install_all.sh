@@ -65,7 +65,11 @@ sudo apt-get install \
     libsasl2-dev \
     libnuma-dev \
     pkg-config \
-    libssl-dev
+    libssl-dev \
+    libedit-dev \
+    libmatio-dev \
+    libpython-dev \
+    python-numpy
 
 echo
 echo Cloning repositories
