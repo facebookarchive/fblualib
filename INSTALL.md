@@ -6,7 +6,7 @@ If you're on Ubuntu 13.10 or Ubuntu 14.04 (or higher), you can use the
 one-stop installation script:
 
 ```
-curl -sk https://github.com/facebook/fblualib/install_all.sh | bash
+curl -sk https://raw.githubusercontent.com/facebook/fblualib/master/install_all.sh | bash
 ```
 
 This will install [folly](https://github.com/facebook/folly),
