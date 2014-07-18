@@ -30,7 +30,7 @@ edit the script to comment out the lines that install Torch.
 FBLuaLib is composed of a few separate (but interdependent) packages.
 
 1. Install [TH++](https://github.com/facebook/thpp) by following
-[the instructions](https://github.com/facebook/thpp/INSTALL.md)
+[the instructions](https://github.com/facebook/thpp/blob/master/INSTALL.md)
 2. Install a few additional packages; on Ubuntu 13.10 and 14.04, they are as
 follows (feel free to cut and paste the apt-get command below):
 ```
