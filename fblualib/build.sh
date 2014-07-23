@@ -24,7 +24,8 @@ cmake ..
 make
 sudo make install
 
-rocks="util luaunit editline trepl debugger mattorch python thrift"
+rocks="util luaunit complex \
+  ffivector editline trepl debugger mattorch python thrift"
 version='0.1-1'
 for rock in $rocks; do
   cd $root/$rock

@@ -5,7 +5,13 @@
 --  This source code is licensed under the BSD-style license found in the
 --  LICENSE file in the root directory of this source tree. An additional grant
 --  of patent rights can be found in the PATENTS file in the same directory.
+
+-- Rudimentary complex number support, building on top of LuaJIT's already
+-- existing support (1+2i is parsed correctly and produces a boxed double
+-- _Complex value)
 --
+-- This provides basic mathematical operations and wrappers for the functions
+-- in <complex.h>
 
 local ffi = require('ffi')
 
@@ -29,8 +35,7 @@ M.tocomplex = tocomplex
 -- Wrappers around <complex.h> functions
 local one_operand = {
     'abs', 'acos', 'acosh', 'arg', 'asin', 'asinh', 'atan', 'atanh', 'cos',
-    'cosh', 'exp', 'log', 'sin', 'sinh', 'sqrt', 'tan',
-    'tanh',
+    'cosh', 'exp', 'log', 'sin', 'sinh', 'sqrt', 'tan', 'tanh',
 }
 
 local two_operand = {
