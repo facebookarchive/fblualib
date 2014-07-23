@@ -82,10 +82,7 @@ function mt.__div(a, b)
                    (a.im * b.re - a.re * b.im) / d)
 end
 
-function mt.__pow(a, b)
-    a, b = tocomplex(a), tocomplex(b)
-    return M.pow(a, b)
-end
+mt.__pow = M.pow
 
 function mt.__unm(a)
     a = tocomplex(a)
