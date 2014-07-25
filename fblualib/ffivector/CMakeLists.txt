@@ -26,7 +26,7 @@ INCLUDE_DIRECTORIES(
 SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=gnu++11")
 
 SET(src
-  Util.cpp
+  FFIVector.cpp
 )
 
 # I wish I could install the FFI module with LuaRocks's standard installation
