@@ -108,7 +108,7 @@ int serializeToFile(lua_State* L) {
     (lua_type(L, 3) != LUA_TNIL && lua_type(L, 3) != LUA_TNONE ?
      static_cast<CodecType>(luaL_checkinteger(L, 3)) :
      CodecType::NO_COMPRESSION);
-  auto luaChunkSize = luaGetNumber<uint64_t>(L, 3);
+  auto luaChunkSize = luaGetNumber<uint64_t>(L, 4);
   uint64_t chunkSize =
     luaChunkSize ? *luaChunkSize : std::numeric_limits<uint64_t>::max();
 
