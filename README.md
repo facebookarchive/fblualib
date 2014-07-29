@@ -18,6 +18,9 @@ x86_64 Linux.
   Torch-specific features if Torch is installed)
 * [fb.debugger](fblualib/debugger/README.md) is a full-featured source-level
   Lua debugger. Does not require Torch.
+* [fb.ffivector](fblualib/ffivector/README.md) is a vector of POD types or
+  strings that does not count toward the Lua heap limit. Does not require
+  Torch.
 * [fb.python](fblualib/python/README.md) is a bridge between Lua and Python,
   allowing seamless integration between the two (enabling, for example,
   using [SciPy](http://www.scipy.org/) with Lua tensors almost as efficiently
