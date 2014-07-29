@@ -89,10 +89,18 @@ function testFFIVectorDestruction()
         v[43] = 10
         assertEquals(2, destructor_count)
         assertEquals(43, #v)
+
+        v:resize(50)
+        assertEquals(2, destructor_count)
+        assertEquals(50, #v)
+
+        v:resize(40)
+        assertEquals(12, destructor_count)
+        assertEquals(40, #v)
     end
     collectgarbage()
 
-    assertEquals(45, destructor_count)
+    assertEquals(52, destructor_count)
 end
 
 LuaUnit:main()

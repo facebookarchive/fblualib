@@ -51,13 +51,13 @@
 -- is destroyed (when the vector itself is GCed, or when an element is
 -- overwritten). The vector of string implementation uses this to free memory.
 --
--- For convenience, we also support functions to create vectors of standard
+-- For convenience, we also provide functions to create vectors of standard
 -- C numeric types: new_char, new_unsigned_long, new_int, new_uint64_t,
 -- new_float, etc. The vectors such created have "tonumber" as the index
 -- function, and so precision is limited by Lua numbers.
 --
--- We also supply new_string, that creates a vector of strings. The strings are
--- stored outside the Lua heap, and a new Lua string is created on demand
+-- We also provide new_string, which creates a vector of strings. The strings
+-- are stored outside the Lua heap, and a new Lua string is created on demand
 -- whenever you access an element.
 --
 -- local ffivector = require('fb.ffivector')
@@ -106,24 +106,6 @@ local function ipairs_fn(t)
     return iter, t, 0
 end
 
-local methods = {}
-
-function methods:resize(n)
-    if lib.ffivector_resize(self._v, n) < 0 then
-        error('Out of memory')
-    end
-end
-
-function methods:reserve(n)
-    if lib.ffivector_resserve(self._v, n) < 0 then
-        error('Out of memory')
-    end
-end
-
-function methods:capacity()
-    return self._v.capacity
-end
-
 local cachedTypes = {}
 setmetatable(cachedTypes, {__mode = 'v'})  -- weak values
 
@@ -133,6 +115,31 @@ local function new(ctype, initial_capacity, index, newindex, destructor)
 
     if not factory then
         local pointerType = ffi.typeof('$*', ctype)
+
+        local methods = {}
+        function methods:resize(n)
+            local size = tonumber(self._v.size)
+            if destructor and n < size then
+                local ptr = ffi.cast(pointerType, self._v.data)
+                for i = n + 1, size do
+                    destructor(ptr[i - 1])
+                end
+            end
+
+            if lib.ffivector_resize(self._v, n) < 0 then
+                error('Out of memory')
+            end
+        end
+
+        function methods:reserve(n)
+            if lib.ffivector_resserve(self._v, n) < 0 then
+                error('Out of memory')
+            end
+        end
+
+        function methods:capacity()
+            return self._v.capacity
+        end
 
         -- a ffi metatype is faster than a table here...
         factory = ffi.metatype('struct { FFIVector _v; }', {
@@ -149,7 +156,8 @@ local function new(ctype, initial_capacity, index, newindex, destructor)
             __gc = function(self)
                 if destructor then
                     local ptr = ffi.cast(pointerType, self._v.data)
-                    for i = 1, tonumber(self._v.size) do
+                    local size = tonumber(self._v.size)
+                    for i = 1, size do
                         destructor(ptr[i - 1])
                     end
                 end
