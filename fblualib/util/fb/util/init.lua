@@ -32,9 +32,15 @@
 -- Math utilities:
 -- * random_seed(), return a "good" random number seed; do not use for
 --   crypto. (But WTF, you're not doing crypto in Lua anyway, are you?)
+--
+-- Torch tensor utilities:
+-- * find(), given a 1d byte tensor, return a 1d long tensor containing the
+--   (1-based) indices of non-zero values in the input
 
 local ffi = require('ffi')
 local pl = require('pl.import_into')()
+local ok, torch = pcall(require, 'torch')
+if not ok then torch = nil end
 local module_config = require('fb.util._config')
 
 local M = {}
@@ -285,5 +291,34 @@ local function random_seed()
     return tonumber(util_lib.randomNumberSeed())
 end
 M.random_seed = random_seed
+
+if torch then
+    M.find = function(byte_input)
+        if byte_input:type()  ~= "torch.ByteTensor" then
+            error("input should be 1d torch byte tensor")
+        end
+        if byte_input:dim() ~= 1 then
+            error("input should be 1d torch byte tensor")
+        end
+
+        local N = byte_input:size(1)
+        local stride = byte_input:stride(1)
+        local iptr = byte_input:data()
+        local offset = 0
+
+        local output=torch.zeros(N):long()
+        local optr = output:data()
+        local j = 0
+        for i = 0, N-1 do
+            if iptr[offset] ~= 0 then
+                optr[j] = i + 1
+                j = j + 1
+            end
+            offset = offset + stride
+        end
+
+        return output:sub(1, j)
+    end
+end
 
 return M

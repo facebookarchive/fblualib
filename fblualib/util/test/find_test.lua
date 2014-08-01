@@ -2,8 +2,8 @@
 
 require 'fb.luaunit'
 
-local torch = require('fbcode.deeplearning.torch.fbtorch')
-local find = require('fb.util.find')
+local torch = require('torch')
+local find = require('fb.util').find
 
 function testfind1d()
     local dim1 = math.random(10,1000)
@@ -50,10 +50,13 @@ function testfind2d()
     assertEquals( poscolsum1, colp:sum() )
     assertEquals( poscolsum2, colp:sum() )
 end
--- run a bunch of times
-for i = 1,100 do
-    testfind1d()
-    testfind2d()
+
+function testbenchmark()
+    -- run a bunch of times
+    for i = 1,100 do
+        testfind1d()
+        testfind2d()
+    end
 end
 
 LuaUnit:main()
