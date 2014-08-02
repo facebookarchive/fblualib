@@ -1,0 +1,115 @@
+--
+--  Copyright (c) 2014, Facebook, Inc.
+--  All rights reserved.
+--
+--  This source code is licensed under the BSD-style license found in the
+--  LICENSE file in the root directory of this source tree. An additional grant
+--  of patent rights can be found in the PATENTS file in the same directory.
+--
+
+local digraph = require('fb.util.digraph')
+local pl = require('pl.import_into')()
+
+require('fb.luaunit')
+
+local function sorted(t)
+    return pl.List(t):sort()
+end
+
+local function print_values(t)
+    for _, v in ipairs(t) do
+        print(v)
+    end
+end
+
+local function check_topo_sort(ts, edges)
+    local imap = pl.tablex.index_map(ts)
+    for _, edge in ipairs(edges) do
+        local v, w = table.unpack(edge)
+        assertTrue(imap[v] < imap[w])
+    end
+end
+
+TestDigraph = {}
+
+function TestDigraph:setUp()
+    self.G = digraph.Digraph()
+    for i = 1, 10 do
+        self.G:add_vertex(i)
+    end
+    for i = 1, 9 do
+        self.G:add_edge(i + 1, i)
+    end
+end
+
+function TestDigraph:testBasic()
+    local G = self.G
+
+    assertEquals(10, #G)
+    assertEquals(10, G:vertex_count())
+    assertEquals(9, G:edge_count())
+    assertEquals({10}, G:sources())
+    assertEquals({1}, G:sinks())
+
+    G:add_edge(1, 3)
+    assertEquals({}, G:sinks())
+
+    assertEquals({}, G:predecessors(1))
+    assertEquals({3}, sorted(G:successors(1)))
+    assertEquals({1, 4}, sorted(G:predecessors(3)))
+    assertEquals({2}, G:successors(3))
+end
+
+function TestDigraph:testTopoSort1()
+    local G = self.G
+
+    assertEquals({10, 9, 8, 7, 6, 5, 4, 3, 2, 1}, G:topo_sort());
+    assertEquals({1, 2, 3, 4, 5, 6, 7, 8, 9, 10}, G:reverse_topo_sort());
+
+    G:add_edge(1, 5);
+
+    assertError(G.topo_sort, G);
+    assertError(G.reverse_topo_sort, G);
+end
+
+function testCross()
+    local G1 = digraph.Digraph()
+
+    local cross_from = {}
+    for i = 1, 10 do
+        table.insert(cross_from, i + 10)
+        G1:add_vertex(i)
+        G1:add_vertex(i + 10)
+        G1:add_edge(i, i + 10)
+    end
+    assertEquals(20, #G1)
+
+    local cross_to = {}
+
+    local G2 = digraph.Digraph()
+    for i = 101, 110 do
+        table.insert(cross_to, i)
+        G2:add_vertex(i)
+        G2:add_vertex(i + 10)
+        G2:add_edge(i, i + 10)
+    end
+    assertEquals(20, #G2)
+
+    G1:cross(G2)
+
+    assertEquals(40, #G1)
+    assertEquals(0, #G2)
+
+    for i = 1, 10 do
+        assertEquals({}, G1:predecessors(i))
+        assertEquals({i + 10}, G1:successors(i))
+        assertEquals({i}, G1:predecessors(i + 10))
+        assertEquals(cross_to, sorted(G1:successors(i + 10)))
+        assertEquals(cross_from, sorted(G1:predecessors(i + 100)))
+        assertEquals({i + 110}, G1:successors(i + 100))
+        assertEquals({i + 100}, G1:predecessors(i + 110))
+        assertEquals({}, G1:successors(i + 110))
+    end
+end
+
+LuaUnit:main()
