@@ -17,6 +17,12 @@
 -- String utilities:
 -- * longest_common_prefix, return the longest common prefix of multiple
 --   strings
+-- * std_string, a Lua string-like FFI type that wraps std::string; useful
+--   when writing FFI Lua code that interfaces with C++ code.
+--   Supports #str, (mutable) str:append(...), str:clear(), str:sub(),
+--   tostring(str), str1 .. str2
+-- * c_escape / c_unescape, escape / unescape special characters that couldn't
+--   go inside a C string (see folly::cEscape in <folly/String.h>)
 --
 -- Filesystem utilities:
 -- * create_temp_dir, create a temporary directory
@@ -200,7 +206,7 @@ M.Deque = Deque
 -- all elements will default to the *same* object!)
 -- If store is true, then a lookup for an element that doesn't exist
 -- will store the default value in the table.
-local function set_default(table, default_cb, store)
+local function set_default(table, default_cb, store, mode)
     assert(not getmetatable(table))
     assert(type(default_cb) == 'function')
     setmetatable(table, {
@@ -209,6 +215,7 @@ local function set_default(table, default_cb, store)
             if store then t[k] = v end
             return v
         end,
+        __mode = mode,
     })
 end
 M.set_default = set_default
@@ -291,6 +298,202 @@ local function random_seed()
     return tonumber(util_lib.randomNumberSeed())
 end
 M.random_seed = random_seed
+
+ffi.cdef([=[
+void* stdStringNew();
+void* stdStringNewFromString(const char*, size_t);
+void* stdStringClone(const void*);
+void stdStringDelete(void*);
+void stdStringClear(void*);
+bool stdStringAppend(void*, const char*, size_t);
+bool stdStringAppendS(void*, const void*);
+bool stdStringInsert(void*, size_t, const char*, size_t);
+bool stdStringInsertS(void*, size_t, const void*);
+bool stdStringReplace(void*, size_t, size_t, const char*, size_t);
+bool stdStringReplaceS(void*, size_t, size_t, const void*);
+void stdStringErase(void*, size_t, size_t);
+const char* stdStringData(const void*);
+size_t stdStringSize(const void*);
+
+const char* cEscape(const char*, size_t, void*);
+const char* cUnescape(const char*, size_t, void*);
+]=])
+
+-- FFI class that wraps st::string
+local std_string = ffi.typeof('struct { void* _p; }')
+local nullptr = ffi.new('void*')
+local methods = {}
+
+-- Clear the contents of the string
+function methods:clear()
+    util_lib.stdStringClear(self._p)
+end
+
+local function _string_pos(p, size)
+    if p < 0 then
+        p = p + size
+    else
+        p = p - 1
+    end
+    if p < 0 then
+        p = 0
+    end
+    if p > size then
+        p = size
+    end
+    return p
+end
+
+local function _string_pos_and_size(b, e, size)
+    b = _string_pos(b, size)
+
+    if not e then
+        e = size
+    elseif e < 0 then
+        e = e + size + 1
+    end
+
+    if e > size then
+        e = size
+    end
+
+    local n
+    if e < b then
+        n = 0
+    else
+        n = e - b
+    end
+
+    return b, n
+end
+
+-- Return a substring, same semantics as string:sub
+function methods:sub(b, e)
+    local data = util_lib.stdStringData(self._p)
+    local pos, n = _string_pos_and_size(b, e, #self)
+
+    return ffi.string(data + pos, n)
+end
+
+-- Insert a substring at a given position
+function methods:insert(p, other)
+    local pos = _string_pos(p, #self)
+    local r
+    if ffi.istype(std_string, other) then
+        r = util_lib.stdStringInsertS(self._p, pos, other.p_)
+    else
+        local s = tostring(other)
+        r = util_lib.stdStringInsert(self._p, pos, s, #s)
+    end
+    if not r then
+        error('Out of memory')
+    end
+end
+
+-- Replace a substring
+function methods:replace(b, e, other)
+    local pos, n = _string_pos_and_size(b, e, #self)
+    local r
+    if ffi.istype(std_string, other) then
+        r = util_lib.stdStringReplaceS(self._p, pos, n, other.p_)
+    else
+        local s = tostring(other)
+        r = util_lib.stdStringReplace(self._p, pos, n, s, #s)
+    end
+    if not r then
+        error('Out of memory')
+    end
+end
+
+-- Erase a substring
+function methods:erase(b, e)
+    local pos, n = _string_pos_and_size(b, e, #self)
+    util_lib.stdStringErase(self._p, pos, n)
+end
+
+-- Append (mutating self) other to the end of self.
+function methods:append(other)
+    local r
+    if ffi.istype(std_string, other) then
+        r = util_lib.stdStringAppendS(self._p, other._p)
+    else
+        local s = tostring(other)
+        r = util_lib.stdStringAppend(self._p, s, #s)
+    end
+    if not r then
+        error('Out of memory')
+    end
+end
+
+ffi.metatype(std_string, {
+    __new = function(ct, s)
+        local obj = ffi.new(ct)
+
+        if s == nil then
+            -- no arguments, create empty string
+            obj._p = util_lib.stdStringNew()
+        elseif ffi.istype(std_string, s) then
+            -- clone std::string
+            obj._p = util_lib.stdStringClone(s._p)
+        else
+            -- Lua string
+            str = tostring(s)
+            obj._p = util_lib.stdStringNewFromString(str, #str)
+        end
+
+        if obj._p == nullptr then
+            error('Out of memory')
+        end
+
+        return obj
+    end,
+
+    __gc = function(self)
+        util_lib.stdStringDelete(self._p)
+    end,
+
+    __len = function(self)
+        return tonumber(util_lib.stdStringSize(self._p))
+    end,
+
+    __tostring = function(self)
+        return ffi.string(util_lib.stdStringData(self._p), #self)
+    end,
+
+    __concat = function(self, other)
+        local res = std_string(self)  -- clone
+        res:append(other)
+        return res
+    end,
+
+    __index = methods,
+})
+M.std_string = std_string
+
+local c_escape_buf = std_string()
+
+-- C-Escape a string, making it suitable for representation as a C string
+-- literal.
+local function c_escape(str)
+    c_escape_buf:clear()
+    local err_msg = util_lib.cEscape(str, #str, c_escape_buf._p)
+    if err_msg ~= nullptr then
+        error(ffi.string(err_msg))
+    end
+    return tostring(c_escape_buf)
+end
+M.c_escape = c_escape
+
+-- C-Unescape a string, the opposite of c_escape, above.
+local function c_unescape(str)
+    c_escape_buf:clear()
+    local err_msg = util_lib.cUnescape(str, #str, c_escape_buf._p)
+    if err_msg ~= nullptr then
+        error(ffi.string(err_msg))
+    end
+    return tostring(c_escape_buf)
+end
+M.c_unescape = c_unescape
 
 if torch then
     M.find = function(byte_input)

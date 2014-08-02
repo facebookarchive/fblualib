@@ -143,4 +143,74 @@ function testClocks()
     assertTrue(end_monotonic - start_monotonic >= 80e-3)
 end
 
+function testStdString()
+    local s = util.std_string('foo')
+    assertEquals('foo', tostring(s))
+    assertEquals(3, #s)
+
+    local s1 = util.std_string(s)
+    assertEquals('foo', tostring(s1))
+    assertEquals(3, #s1)
+
+    s:append('bar')
+    assertEquals('foobar', tostring(s))
+    assertEquals(6, #s)
+    assertEquals('foo', tostring(s1))
+    assertEquals(3, #s1)
+
+    local s2 = s .. 'baz'
+    assertEquals('foobarbaz', tostring(s2))
+    assertEquals(9, #s2)
+    assertEquals('foobar', tostring(s))
+    assertEquals(6, #s)
+    assertEquals('foo', tostring(s1))
+    assertEquals(3, #s1)
+
+    s2:append(s1)
+    assertEquals('foobarbazfoo', tostring(s2))
+    assertEquals(12, #s2)
+    assertEquals('foobar', tostring(s))
+    assertEquals(6, #s)
+    assertEquals('foo', tostring(s1))
+    assertEquals(3, #s1)
+
+    local s3 = s2 .. s1
+    assertEquals('foobarbazfoofoo', tostring(s3))
+    assertEquals(15, #s3)
+    assertEquals('foobarbazfoo', tostring(s2))
+    assertEquals(12, #s2)
+    assertEquals('foobar', tostring(s))
+    assertEquals(6, #s)
+    assertEquals('foo', tostring(s1))
+    assertEquals(3, #s1)
+
+    assertEquals('f', s3:sub(1, 1))
+    assertEquals('f', s3:sub(0, 1))
+    assertEquals('', s3:sub(0, 0))
+    assertEquals('oob', s3 :sub(2, 4))
+    assertEquals('', s3:sub(2, 1))
+    assertEquals('oobarbazfoofoo', s3:sub(2, 200))
+    assertEquals('oobarbazfoof', s3:sub(2, -3))
+    assertEquals('', s3:sub(2, -200))
+    assertEquals('oofo', s3:sub(-5, -2))
+
+    s3:erase(13)
+    assertEquals('foobarbazfoo', tostring(s3))
+    s3:erase(9, 10)
+    assertEquals('foobarbaoo', tostring(s3))
+    s3:insert(7, 'xyz')
+    assertEquals('foobarxyzbaoo', tostring(s3))
+    s3:replace(2, 4, 'meow')
+    assertEquals('fmeowarxyzbaoo', tostring(s3))
+end
+
+function testCEscape()
+    assertEquals('fo\\"o\\nbar', util.c_escape('fo"o\nbar'))
+end
+
+function testCUnescape()
+    assertEquals('fo"o\nbar', util.c_unescape('fo\\"o\\nbar'))
+    assertErrorMessage('invalid escape sequence', util.c_unescape, '\\q')
+end
+
 LuaUnit:main()
