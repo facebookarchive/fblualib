@@ -10,6 +10,7 @@
 require('fb.luaunit')
 
 local ffivector = require('fb.ffivector')
+local gettorch = require('torch')
 
 function testIntFFIVector()
     local v = ffivector.new_int()
