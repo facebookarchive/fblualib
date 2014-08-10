@@ -271,6 +271,8 @@ end
 M.create_temp_dir = create_temp_dir
 
 local util_lib = ffi.load(module_config.clib)
+M._clib = util_lib
+
 ffi.cdef([=[
 int64_t getMicrosecondsMonotonic();
 int64_t getMicrosecondsRealtime();
