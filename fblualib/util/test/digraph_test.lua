@@ -38,7 +38,7 @@ function TestDigraph:setUp()
         self.G:add_vertex(i)
     end
     for i = 1, 9 do
-        self.G:add_edge(i + 1, i)
+        self.G:add_edge(i + 1, i, i * 10)
     end
 end
 
@@ -50,6 +50,12 @@ function TestDigraph:testBasic()
     assertEquals(9, G:edge_count())
     assertEquals({10}, G:sources())
     assertEquals({1}, G:sinks())
+    assertTrue(pl.tablex.compare_no_order(
+        {[4] = 40},
+        G:out_edges(5)))
+    assertTrue(pl.tablex.compare_no_order(
+        {[5] = 40},
+        G:in_edges(4)))
 
     G:add_edge(1, 3)
     assertEquals({}, G:sinks())
@@ -70,6 +76,31 @@ function TestDigraph:testTopoSort1()
 
     assertError(G.topo_sort, G);
     assertError(G.reverse_topo_sort, G);
+end
+
+function TestDigraph:testClone()
+    local G = self.G:clone(
+        function(v) return string.format('v%d', v) end,
+        function(e) return string.format('e%d', e) end)
+
+    assertEquals(10, #G)
+    assertEquals(10, G:vertex_count())
+    assertEquals(9, G:edge_count())
+    assertEquals({'v10'}, G:sources())
+    assertEquals({'v1'}, G:sinks())
+    assertTrue(pl.tablex.compare_no_order(
+        {v4 = 'e40'},
+        G:out_edges('v5')))
+    assertTrue(pl.tablex.compare_no_order(
+        {v5 = 'e40'},
+        G:in_edges('v4')))
+    G:add_edge('v1', 'v3')
+    assertEquals({}, G:sinks())
+
+    assertEquals({}, G:predecessors('v1'))
+    assertEquals({'v3'}, sorted(G:successors('v1')))
+    assertEquals({'v1', 'v4'}, sorted(G:predecessors('v3')))
+    assertEquals({'v2'}, G:successors('v3'))
 end
 
 function testCross()

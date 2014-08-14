@@ -34,7 +34,8 @@ end
 
 -- Add an edge from v to w to the digraph; the vertices must already exist,
 -- but the edge must not.
-function Digraph:add_edge(v, w)
+function Digraph:add_edge(v, w, e)
+    e = e or true
     if not self._out_edges[v] then
         error('Source vertex does not exist')
     end
@@ -45,8 +46,8 @@ function Digraph:add_edge(v, w)
         error('Duplicate edge')
     end
     self._edge_count = self._edge_count + 1
-    self._out_edges[v][w] = true
-    self._in_edges[w][v] = true
+    self._out_edges[v][w] = e
+    self._in_edges[w][v] = e
     self._sinks[v] = nil
     self._sources[w] = nil
 end
@@ -105,16 +106,31 @@ local function vkeys(set)
     return keys(set)
 end
 
+local function vset(set)
+    if not set then
+        error('Vertex does not exist')
+    end
+    return set
+end
+
 -- Return a list of all predecessors of v (nodes w such that the graph contains
 -- an edge from w to v)
 function Digraph:predecessors(v)
     return vkeys(self._in_edges[v])
 end
 
+function Digraph:in_edges(v)
+    return vset(self._in_edges[v])
+end
+
 -- Return a list of all successors of v (nodes w such that the graph contains
 -- an edge from v to w)
 function Digraph:successors(v)
     return vkeys(self._out_edges[v])
+end
+
+function Digraph:out_edges(v)
+    return vset(self._out_edges[v])
 end
 
 -- Return a list of all sources (nodes with no predecessors)
@@ -148,12 +164,12 @@ function Digraph:clear()
 end
 
 -- Internal core function that does most of the work of merge and clone
-function Digraph:_merge(other, edges, clone_fn)
+function Digraph:_merge(other, edges, clone_vertex, clone_edge)
     local map = {}
     for v, _ in pairs(edges) do
         local nv
-        if clone_fn then
-            nv = clone_fn(v)
+        if clone_vertex then
+            nv = clone_vertex(v)
             map[v] = nv
         else
             nv = v
@@ -161,12 +177,15 @@ function Digraph:_merge(other, edges, clone_fn)
         self:add_vertex(nv)
     end
     for v, ws in pairs(edges) do
-        for w, _ in pairs(ws) do
-            if clone_fn then
+        for w, e in pairs(ws) do
+            if clone_vertex then
                 v = map[v]
                 w = map[w]
             end
-            self:add_edge(v, w)
+            if clone_edge then
+                e = clone_edge(e)
+            end
+            self:add_edge(v, w, e)
         end
     end
 end
@@ -179,22 +198,22 @@ function Digraph:merge(other)
 end
 
 -- Internal helper function for clone
-function Digraph:_clone(edges, clone_fn)
+function Digraph:_clone(edges, clone_vertex, clone_edge)
     local copy = Digraph()
-    copy:_merge(self, edges, clone_fn)
+    copy:_merge(self, edges, clone_vertex, clone_edge)
     return copy
 end
 
 -- Create a clone of the graph. If clone_fn is specified, all nodes are cloned
 -- using clone_fn, otherwise they are the same objects as in this graph.
-function Digraph:clone(clone_fn)
-    return self:_clone(self._out_edges, clone_fn)
+function Digraph:clone(clone_vertex, clone_edge)
+    return self:_clone(self._out_edges, clone_vertex, clone_edge)
 end
 
 -- Return a clone of the graph with all edges reversed. clone_fn has the same
 -- meaning as for clone.
-function Digraph:reversed(clone_fn)
-    return self:_clone(self._in_edges, clone_fn)
+function Digraph:reversed(clone_vertex, clone_edge)
+    return self:_clone(self._in_edges, clone_vertex, clone_edge)
 end
 
 -- Helper function for topological sorting; destroys the graph.
@@ -233,15 +252,19 @@ function Digraph:__len()
     return self._vertex_count
 end
 
+function Digraph:all()
+    return self._out_edges, self._in_edges
+end
+
 -- Join two graphs, connecting every sink in this to every source in other.
-function Digraph:cross(other)
+function Digraph:cross(other, e)
     local vs, ws = self:sinks(), other:sources()  -- make a copy
 
     self:merge(other)
 
     for _, v in ipairs(vs) do
         for _, w in ipairs(ws) do
-            self:add_edge(v, w)
+            self:add_edge(v, w, e)
         end
     end
 end
