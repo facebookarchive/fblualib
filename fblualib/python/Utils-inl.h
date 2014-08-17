@@ -46,7 +46,7 @@ inline void checkPythonError(Cond&& cond, lua_State* L, Args&&... args) {
 }
 
 #ifdef __GNUC__
-#define X_UNUSED __attribute__((unused))
+#define X_UNUSED __attribute__((__unused__))
 #else
 #define X_UNUSED
 #endif
