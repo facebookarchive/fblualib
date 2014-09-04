@@ -60,6 +60,25 @@ template <class NT>
 NT luaGetFieldIfNumberChecked(lua_State* L, int ud, const char* field,
                               bool strict=false);
 
+// Retrieve boolean
+// In strict mode, we only accept booleans (true or false)
+// In non-strict mode, nil and false cause us to return false, everything
+// else causes us to return true.
+//
+// This means that, in non-strict mode, luaGetBoolean will always return
+// a value, and luaGetBooleanChecked will not error out.
+//
+// This also means that, in non-strict mode, luaGetFieldIfBoolean and
+// luaGetFieldIfBooleanChecked will return a value (false) if the field
+// doesn't exist; this is a side effect of the fact that Lua doesn't let us
+// store nil in tables.
+folly::Optional<bool> luaGetBoolean(lua_State* L, int ud, bool strict=false);
+bool luaGetBooleanChecked(lua_State* L, int ud, bool strict=false);
+folly::Optional<bool> luaGetFieldIfBoolean(
+    lua_State* L, int ud, const char* field, bool strict=false);
+bool luaGetFieldIfBooleanChecked(
+    lua_State* L, int ud, const char* field, bool strict=false);
+
 // Retrieve tensor
 template <class NT>
 folly::Optional<thpp::Tensor<NT>> luaGetTensor(lua_State* L, int ud);

@@ -67,6 +67,35 @@ folly::StringPiece luaGetFieldIfStringChecked(lua_State* L, int ud,
   return luaGetStringChecked(L, -1, strict);
 }
 
+folly::Optional<bool> luaGetBoolean(lua_State* L, int ud, bool strict) {
+  if (strict && lua_type(L, ud) != LUA_TBOOLEAN) {
+    return nullptr;
+  }
+  return bool(lua_toboolean(L, ud));
+}
+
+bool luaGetBooleanChecked(lua_State* L, int ud, bool strict) {
+  if (strict && lua_type(L, ud) != LUA_TBOOLEAN) {
+    luaL_error(L, "not a boolean");
+  }
+  return bool(lua_toboolean(L, ud));
+}
+
+folly::Optional<bool> luaGetFieldIfBoolean(
+    lua_State* L, int ud, const char* field, bool strict) {
+  detail::pushField(L, ud, field);
+  return luaGetBoolean(L, -1, strict);
+}
+
+bool luaGetFieldIfBooleanChecked(
+    lua_State* L, int ud, const char* field, bool strict) {
+  // Careful. In non-strict mode, nil is perfectly fine, so we'll call
+  // pushField, not pushFieldChecked. (In strict mode, luaGetBooleanChecked
+  // will error out on the nil anyway)
+  detail::pushField(L, ud, field);
+  return luaGetBooleanChecked(L, -1, strict);
+}
+
 folly::Optional<size_t> luaListSize(lua_State* L, int ud) {
   if (!lua_istable(L, ud)) {
     return nullptr;
