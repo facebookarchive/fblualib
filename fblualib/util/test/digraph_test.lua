@@ -66,6 +66,14 @@ function TestDigraph:testBasic()
     assertEquals({2}, G:successors(3))
 end
 
+function TestDigraph:testForEach()
+    local G = self.G
+    local seen = {}
+
+    G:for_each(function(v) seen[v] = (seen[v] or 0) + 1 end)
+    assertEquals(pl.Set(seen), pl.Set({1, 1, 1, 1, 1, 1, 1, 1, 1, 1}))
+end
+
 function TestDigraph:testTopoSort1()
     local G = self.G
 
@@ -141,6 +149,20 @@ function testCross()
         assertEquals({i + 100}, G1:predecessors(i + 110))
         assertEquals({}, G1:successors(i + 110))
     end
+end
+
+function testForEachCycle()
+    local G = digraph.Digraph()
+
+    G:add_vertex(1)
+    G:add_vertex(2)
+    G:add_edge(1, 2)
+    G:add_edge(2, 1)
+
+    local seen = {}
+    G:for_each(function(v) seen[v] = (seen[v] or 0) + 1 end)
+
+    assertEquals(pl.Set(seen), pl.Set({1, 1}))
 end
 
 LuaUnit:main()

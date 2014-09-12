@@ -269,6 +269,12 @@ function Digraph:cross(other, e)
     end
 end
 
+function Digraph:for_each(func)
+    for v, _ in pairs(self._out_edges) do
+        func(v)
+    end
+end
+
 M.Digraph = Digraph
 
 return M

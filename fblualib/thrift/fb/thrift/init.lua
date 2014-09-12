@@ -98,12 +98,25 @@ M.add_special_callbacks = special_callbacks
 -- is not serialized.
 -- This is sufficient for most OOP mechanisms, where the "class" of an object
 -- is its metatable.
-local function add_metatable(key, mt)
+local function add_metatable(key, mt, serializer, deserializer)
     add_special_callbacks(
         'thrift.metatable.' .. key,
         function(obj) return getmetatable(obj) == mt end,
-        function(obj) return '', obj, false end,
-        function(name, obj) setmetatable(obj, mt) end)
+        function(obj)
+            local sobj
+            if serializer then
+                sobj = serializer(obj)
+                assert(sobj == nil or type(sobj) == 'table')
+            end
+            return '', sobj or obj, false
+        end,
+        function(name, obj)
+            if deserializer then
+                local r = deserializer(obj)
+                assert(r == nil)  -- No, don't return a replacement object.
+            end
+            setmetatable(obj, mt)
+        end)
 end
 M.add_metatable = add_metatable
 
@@ -155,5 +168,45 @@ end
 
 -- Register our callbacks with the C library.
 lib._set_callbacks(serialize_callback, deserialize_callback)
+
+-- Is this a Penlight class?  this is the best we can do...
+local function is_penlight_class(v)
+    return type(v) == 'table' and getmetatable(v) and v._class == v
+end
+
+-- Add a Penlight class to be serialized under the given name (must
+-- be globally unique).
+--
+-- If the class has the specially-named methods _thrift_serialize and
+-- _thrift_deserialize, they will be called as follows:
+--
+-- At serialization time, before an object of that class is serialized,
+-- we call obj:_thrift_serialize(). This method must either return a table
+-- (that will be serialized *instead of* obj) or nil (which means we'll
+-- serialize obj; this gives you an opportunity to blow away temporary
+-- fields that shouldn't be serialized.)
+--
+-- At deserialization time, we call _thrift_deserialize(obj) which must
+-- mutate obj *in place*. obj is a table (not yet blessed as a Penlight
+-- class), and _thrift_deserialize must set fields appropriately so that
+-- it can be blessed and produce a valid object.
+--
+-- If the class doesn't have these methods, all fields will be serialized.
+local function add_penlight_class(cls, name)
+    assert(name)
+    assert(is_penlight_class(cls))
+    add_metatable(name, cls, cls._thrift_serialize, cls._thrift_deserialize)
+end
+M.add_penlight_class = add_penlight_class
+
+-- Register all Penlight classes in a table for serialization / deserialization
+local function add_penlight_classes(tab, prefix)
+    for k, v in pairs(tab) do
+        if is_penlight_class(v) then
+            add_penlight_class(v, prefix .. '.' .. k)
+        end
+    end
+end
+M.add_penlight_classes = add_penlight_classes
 
 return M

@@ -9,6 +9,7 @@
 
 require('fb.luaunit')
 
+local pl = require('pl.import_into')()
 local torch = require('torch')
 local thrift = require('fb.thrift')
 local util = require('fb.util')
@@ -381,6 +382,54 @@ function testBM()
     end
     e = os.clock()
     print('Deserialize torch : tensor', e - s)
+end
+
+function testPenlightClasses()
+    local A = pl.class()
+    function A:_init()
+        self.a = 42
+    end
+
+    local B = pl.class(A)
+    function B:_init()
+        self:super()
+        self.b = 100
+    end
+
+    thrift.add_penlight_class(A, 'A')
+    thrift.add_penlight_class(B, 'B')
+
+    local b = B()
+    local b1 = thrift.from_string(thrift.to_string(b))
+
+    assertTrue(B:class_of(b1))
+    assertEquals(42, b.a)
+    assertEquals(100, b.b)
+end
+
+function testPenlightClassesCustomSerialization()
+    local A = pl.class()
+    function A:_init()
+        self.a = 42
+        self.b = 100
+    end
+
+    function A:_thrift_serialize()
+        return {a = self.a}  -- not b
+    end
+
+    function A:_thrift_deserialize()
+        self.deserialized = true
+    end
+
+    thrift.add_penlight_class(A, 'A1')
+
+    local a = thrift.from_string(thrift.to_string(A()))
+
+    assertTrue(A:class_of(a))
+    assertEquals(42, a.a)
+    assertEquals(nil, a.b)
+    assertTrue(a.deserialized)
 end
 
 LuaUnit:main()

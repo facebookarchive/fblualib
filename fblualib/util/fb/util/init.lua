@@ -24,6 +24,10 @@
 -- * c_escape / c_unescape, escape / unescape special characters that couldn't
 --   go inside a C string (see folly::cEscape in <folly/String.h>)
 --
+-- Table utilities:
+-- * filter_keys: given a table and a list of keys, return a subset of
+--   corresponding to the list of keys
+--
 -- Filesystem utilities:
 -- * create_temp_dir, create a temporary directory
 --
@@ -525,5 +529,17 @@ if torch then
         return output:sub(1, j)
     end
 end
+
+local function filter_keys(table, keys)
+    keys = pl.tablex.makeset(keys)
+    local result = {}
+    for k, v in pairs(table) do
+        if keys[k] then
+            result[k] = v
+        end
+    end
+    return result
+end
+M.filter_keys = filter_keys
 
 return M

@@ -213,4 +213,10 @@ function testCUnescape()
     assertErrorMessage('invalid escape sequence', util.c_unescape, '\\q')
 end
 
+function testFilterKeys()
+    local a = {foo = 42, bar = 50, baz = 100}
+    local b = util.filter_keys(a, {'foo', 'baz'})
+    assertEquals({foo = 42, baz = 100}, b)
+end
+
 LuaUnit:main()
