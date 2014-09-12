@@ -34,10 +34,10 @@ function testSmoke()
     assertEquals(vec[1], t3copy)
     assertEquals(vec[1], t3)
 
-    -- Append via write
+    -- Append
     local t4 = torch.randn(17)
     local t4copy = t4
-    vec[2] = t4
+    av.append(vec, t4)
     assertEquals(#vec, 2)
     assertEquals(vec[1], t3)
     assertEquals(vec[1], t3copy)
