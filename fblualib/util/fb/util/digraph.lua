@@ -10,6 +10,7 @@
 -- Directed graph class
 
 local pl = require('pl.import_into')()
+local module_name = ...
 
 local M = {}
 
@@ -276,5 +277,10 @@ function Digraph:for_each(func)
 end
 
 M.Digraph = Digraph
+
+local ok, thrift = pcall(require, 'fb.thrift')
+if ok then
+    thrift.add_penlight_classes(M, module_name)
+end
 
 return M
