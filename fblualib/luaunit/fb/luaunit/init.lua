@@ -529,7 +529,14 @@ end
 
 SPLITTER = '\n>----------<\n'
 
+local abort_on_error = os.getenv('LUAUNIT_ABORT_ON_ERROR')
+
 function LuaUnit:protectedCall( classInstance , methodInstance)
+    if abort_on_error then
+        methodInstance(classInstance)
+        return true
+    end
+
     -- if classInstance is nil, this is just a function run
     local function err_handler(e)
         return debug.traceback(e .. SPLITTER, 4)
@@ -538,7 +545,7 @@ function LuaUnit:protectedCall( classInstance , methodInstance)
     local ok, errorMsg = xpcall(methodInstance, err_handler, classInstance)
     if not ok then
         t = pl.stringx.split(errorMsg, SPLITTER)
-        local stackTrace = string.sub(t[2],2)
+        local stackTrace = string.sub(t[2] or '',2)
         self:addFailure( t[1], stackTrace )
     end
 
