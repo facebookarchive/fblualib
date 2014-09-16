@@ -98,9 +98,10 @@ class Serializer {
 
  private:
   void setMinVersion(int v);
-  void doSerialize(LuaPrimitiveObject& obj, lua_State* L, int index);
-  void doSerializeTable(LuaTable& obj, lua_State* L, int index);
-  void doSerializeFunction(LuaFunction& obj, lua_State* L, int index);
+  void doSerialize(LuaPrimitiveObject& obj, lua_State* L, int index, int level);
+  void doSerializeTable(LuaTable& obj, lua_State* L, int index, int level);
+  void doSerializeFunction(LuaFunction& obj, lua_State* L, int index,
+                           int level);
 
   LuaObject out_;
   std::unordered_map<const void*, int64_t> converted_;
@@ -115,11 +116,11 @@ class Deserializer {
   };
   explicit Deserializer(unsigned int options=0) : options_(options) { }
 
-  int fromThrift(lua_State* L, LuaObject& obj);
+  int fromThrift(lua_State* L, LuaObject&& obj);
 
  private:
   void doDeserializeRefs(lua_State* L);
-  int doDeserialize(lua_State* L, LuaPrimitiveObject& obj);
+  int doDeserialize(lua_State* L, LuaPrimitiveObject& obj, int level);
   void doDeserializeFunction(lua_State* L, LuaFunction& obj);
   void doSetTable(lua_State* L, int index, LuaTable& obj);
   void doSetUpvalues(lua_State* L, int index, LuaFunction& obj);

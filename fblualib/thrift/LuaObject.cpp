@@ -79,13 +79,17 @@ thpp::ThriftTensorDataType getTensorType(const LuaObject& obj) {
 }
 
 template <class T>
-thpp::Tensor<T> getTensor(LuaObject& obj) {
+thpp::Tensor<T> getTensor(LuaObject&& obj) {
   auto& ref = getRef(obj);
-  if (ref.__isset.tensorVal) return thpp::Tensor<T>(ref.tensorVal);
-  throw std::invalid_argument("LuaObject of wrong type");
+  if (!ref.__isset.tensorVal) {
+    throw std::invalid_argument("LuaObject of wrong type");
+  }
+  auto tensor = thpp::Tensor<T>(std::move(ref.tensorVal));
+  obj = LuaObject();
+  return tensor;
 }
 
-#define X(T) template thpp::Tensor<T> getTensor(LuaObject&);
+#define X(T) template thpp::Tensor<T> getTensor(LuaObject&&);
 X(unsigned char)
 X(int32_t)
 X(int64_t)

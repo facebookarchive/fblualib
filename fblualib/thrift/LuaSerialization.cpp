@@ -134,7 +134,7 @@ int doDeserialize(lua_State* L, DecodedObject&& decodedObject) {
     options |= Deserializer::NO_BYTECODE;
   }
 
-  return Deserializer(options).fromThrift(L, decodedObject.output);
+  return Deserializer(options).fromThrift(L, std::move(decodedObject.output));
 }
 
 int deserializeFromString(lua_State* L) {

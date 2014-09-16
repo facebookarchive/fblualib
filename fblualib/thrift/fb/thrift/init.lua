@@ -16,6 +16,7 @@
 local ffi = require('ffi')
 local lib = require('fb.thrift.lib')
 local torch = require('torch')
+local pl = require('pl.import_into')()
 
 local M = {}
 
@@ -208,5 +209,8 @@ local function add_penlight_classes(tab, prefix)
     end
 end
 M.add_penlight_classes = add_penlight_classes
+
+add_penlight_class(pl.List, 'pl.List')
+add_penlight_class(pl.Set, 'pl.Set')
 
 return M

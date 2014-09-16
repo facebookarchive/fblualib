@@ -64,6 +64,8 @@ class StringWriter {
 
 class StringReader {
  public:
+  // Note that str must outlive the decode object, as the IOBufs inside
+  // DecodedObject will end up pointing to str (but will be marked as shared).
   explicit StringReader(folly::ByteRange* str) : str_(str) { }
 
   std::unique_ptr<folly::IOBuf> operator()(size_t n);

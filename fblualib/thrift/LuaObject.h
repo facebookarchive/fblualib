@@ -41,12 +41,8 @@ double getDouble(const LuaObject& obj);
 bool getBool(const LuaObject& obj);
 folly::StringPiece getString(const LuaObject& obj);
 thpp::ThriftTensorDataType getTensorType(const LuaObject& obj);
-// Note, non-const reference; the tensor shares memory with the given LuaObject
-// and so any changes in the tensor are reflected in the LuaObject
-template <class T> thpp::Tensor<T> getTensor(LuaObject& obj);
-template <class T> thpp::Tensor<T> getTensor(LuaObject&& obj) {
-  return getTensor<T>(obj);
-}
+// Note, rvalue overload only, as getTensor is destructive.
+template <class T> thpp::Tensor<T> getTensor(LuaObject&& obj);
 
 // Writers
 
