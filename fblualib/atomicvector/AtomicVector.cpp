@@ -9,9 +9,11 @@
  */
 
 #include "AtomicVector.h"
+#include <fblualib/CrossThreadRegistry.h>
 
 #include <lua.hpp>
 #include <fblualib/LuaUtils.h>
+#include <memory>
 
 using namespace fblualib;
 using namespace fblualib::detail;
@@ -105,18 +107,15 @@ class TorchAtomicVector : public TorchAtomicVectorIf {
   }
 };
 
-typedef unordered_map<string, unique_ptr<TorchAtomicVectorIf>> VecTab;
-static VecTab g_vecTab;
-static mutex g_vecTabLock;
+CrossThreadRegistry<string, TorchAtomicVectorIf> g_vecTab;
 
 template<typename Real>
 int create(lua_State* L) {
   auto name = luaL_checkstring(L, 1);
-  unique_lock<mutex> l(g_vecTabLock);
-  auto row = g_vecTab.find(name);
-  if (row == g_vecTab.end()) {
-    g_vecTab[name] = unique_ptr<TorchAtomicVectorIf>
-      (new TorchAtomicVector<Real>());
+  auto created = g_vecTab.create(name, [] {
+    return folly::make_unique<TorchAtomicVector<Real>>();
+  });
+  if (created) {
     lua_pushboolean(L, true);
   } else {
     lua_pushnil(L);
@@ -134,10 +133,8 @@ int createFloat(lua_State* L) {
 
 int destroy(lua_State* L) {
   auto name = luaL_checkstring(L, 1);
-  unique_lock<mutex> l(g_vecTabLock);
-  auto row = g_vecTab.find(name);
-  if (row != g_vecTab.end()) {
-    g_vecTab.erase(row);
+  auto removed = g_vecTab.erase(name);
+  if (removed) {
     lua_pushboolean(L, true);
   } else {
     lua_pushnil(L);
@@ -147,17 +144,16 @@ int destroy(lua_State* L) {
 
 int get(lua_State* L) {
   auto name = luaL_checkstring(L, 1);
-  unique_lock<mutex> l(g_vecTabLock);
-  auto row = g_vecTab.find(name);
-  if (row == g_vecTab.end()) {
+  auto ptr = g_vecTab.get(name);
+  if (!ptr) {
     lua_pushstring(L, folly::stringPrintf("no such atomic vector: \"%s\"",
                                           name).c_str());
     luaL_error(L, "no such atomic vector: \"%s\"", name);
   }
   // Success; return userdata
-  auto ptr = (TorchAtomicVectorIf**)
+  auto luaPtr = (TorchAtomicVectorIf**)
     lua_newuserdata(L, sizeof(TorchAtomicVectorIf*));
-  *ptr = row->second.get();
+  *luaPtr = ptr;
   if (!luaT_pushmetatable(L, kTypeName)) {
     assert(false);
   }
