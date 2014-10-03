@@ -95,7 +95,7 @@ TEST(AtomicVector, write) {
     ASSERT_EQ(rc.get(i, true), 0);
   }
   for (int i = 0; i < N; i++) {
-    vec.write(i, 3 * i + 1);
+    vec.append(3 * i + 1);
   }
 
   for (int i = 0; i < N; i++) {
