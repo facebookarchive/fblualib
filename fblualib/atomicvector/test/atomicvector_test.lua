@@ -48,6 +48,50 @@ function testSmoke()
     collectgarbage()
 end
 
+function testLoadAndSave()
+    local av = require('fb.atomicvector')
+    require('torch')
+
+    local name = "foobert" .. math.random(320)
+    local succ = av.create_double(name)
+    local vec = av.get(name)
+
+    local nElements = torch.ceil(torch.rand(1)*50)[1]
+    for i =1, nElements do
+        local x = torch.ceil(torch.rand(1)*50)[1]
+        local y = torch.ceil(torch.rand(1)*50)[1]
+        local tensor = torch.randn(x, y)
+        av.append(vec, tensor)
+    end
+
+    -- save to file
+    local f = torch.DiskFile('/tmp/av_save_load_test.dat', 'w')
+    av.save(vec, f)
+    f:close()
+
+    -- load and check
+    local name2 = "loaded_foobert" .. math.random(320)
+    local succ2 = av.create_double(name2)
+    local vec2 = av.get(name2)
+    av.load('/tmp/av_save_load_test.dat', vec2)
+
+    -- same number of elements ?
+    assertEquals(#vec, #vec2)
+
+    for i = 1, #vec do
+        -- same size ?
+        assertTrue(vec2[i]:isSameSizeAs(vec[i]))
+        -- same content ?
+        assertEquals((vec[i]-vec2[i]):sum(), 0)
+    end
+
+    vec = nil
+    av.destroy(name)
+    vec2 = nil
+    av.destroy(name2)
+    collectgarbage()
+end
+
 function testErrorClib()
     local av = require('fb.atomicvector')
 
