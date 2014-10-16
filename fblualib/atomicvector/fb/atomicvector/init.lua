@@ -9,6 +9,7 @@
 
 local clib = require('fb.atomicvector.clib')
 local torch = require('torch')
+local thrift = require('fb.thrift')
 
 local M = {
     create_float = clib.create_float,
@@ -18,23 +19,52 @@ local M = {
     append = clib.append
 }
 
--- save() takes an atomic vector and a Torch DiskFile as inputs
-function M.save(atom_vec, diskfile)
-    diskfile:writeObject(#atom_vec)
+local SerializationFormatVersionMajor = 1
+local SerializationFormatVersionMinor = 0
+local SerializationFormatMagic = "antigone thistle"
+
+-- save() takes an atomic vector and a Lua file as inputs
+function M.save(atom_vec, f)
+    local hdr = {
+        magic = SerializationFormatMagic,
+        major = SerializationFormatVersionMajor,
+        minor = SerializationFormatVersionMinor,
+        size = #atom_vec
+    }
+    thrift.to_file(hdr, f)
     for i = 1,#atom_vec do
-        diskfile:writeObject(atom_vec[i])
+        thrift.to_file(atom_vec[i], f)
     end
 end
 
--- load() takes a filename and an atomic vector as inputs
-function M.load(filename, atom_vec)
-    local f = torch.DiskFile(filename, 'r')
-    local vec_sz = f:readObject()
-    for i = 1, vec_sz do
-        local t = f:readObject()
-        clib.append(atom_vec, t)
+-- load() takes an atomic vector and a Lua file as inputs
+function M.load(atom_vec, f)
+    local hdr = thrift.from_file(f)
+    local function enforce(b, msg)
+        if not b then
+            error("atomicvector deserialization error: " .. msg)
+        end
     end
-    f:close()
+    local function warnUnless(b, msg)
+        if not b then
+            print( "atomicvector deserializatio warningn: " .. msg)
+        end
+    end
+    enforce(type(hdr) == 'table', "bad header type: " .. type(hdr))
+    enforce(hdr.magic == SerializationFormatMagic,
+            "wrong magic field")
+    enforce(hdr.major <= SerializationFormatVersionMajor,
+            "too new version " .. hdr.major)
+    enforce(type(hdr.size) == "number",
+            "invalid size in header " .. hdr.size)
+    warnUnless(hdr.major < SerializationFormatVersionMajor or
+               hdr.minor <= SerializationFormatVersionMinor,
+               ("restoring from new minor version %d.%d"):
+                 format(hdr.major, hdr.minor))
+
+    for i = 1, hdr.size do
+        clib.append(atom_vec, thrift.from_file(f))
+    end
 end
 
 return M

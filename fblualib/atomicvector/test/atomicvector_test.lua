@@ -48,32 +48,73 @@ function testSmoke()
     collectgarbage()
 end
 
+-- Helper to somewhat rapidly build a large vector
+local function buildHugeVector(name, numTensors, numThreads)
+    local threads = require('threads')
+    local numThreads = numThreads or 40
+    local numTensorsPerThread = numTensors / numThreads
+    local av = require 'fb.atomicvector'
+
+    local succ = av.create_double(name)
+    assert(succ)
+
+    local workers = threads(numThreads,
+        function(threadidx)
+            sdl = require 'sdl2'
+        end,
+        function(threadidx)
+            -- Capture stuff we need in the thread body. This is bizarre;
+            -- some locals get magically captured, others do not.
+            g_name = name
+            g_numTensorsPerThread = numTensorsPerThread
+        end)
+
+    for i = 1, numThreads do
+        workers:addjob(function()
+            local av = require 'fb.atomicvector'
+            local vec = av.get(g_name)
+            assert(vec ~= nil)
+            assert(type(vec) == 'userdata')
+            for j = 1, g_numTensorsPerThread do
+                local x = math.random(1, 40)
+                local y = math.random(1, 20)
+                av.append(vec, torch.randn(x, y))
+            end
+        end)
+    end
+    workers:synchronize()
+end
+
 function testLoadAndSave()
     local av = require('fb.atomicvector')
     require('torch')
 
-    local name = "foobert" .. math.random(320)
-    local succ = av.create_double(name)
+    local name = "ldAndSave" .. math.random(320)
+
+    local nElements = 1e5
+    local numThreads = 40
+    print('building enormous vector...')
+    buildHugeVector(name, nElements, numThreads)
+    print('done')
     local vec = av.get(name)
 
-    local nElements = torch.ceil(torch.rand(1)*50)[1]
-    for i =1, nElements do
-        local x = torch.ceil(torch.rand(1)*50)[1]
-        local y = torch.ceil(torch.rand(1)*50)[1]
-        local tensor = torch.randn(x, y)
-        av.append(vec, tensor)
-    end
-
     -- save to file
-    local f = torch.DiskFile('/tmp/av_save_load_test.dat', 'w')
+    print('saving...')
+    local filename = '/tmp/av_save_load_test.dat'
+    local f = assert(io.open(filename, 'w'))
     av.save(vec, f)
     f:close()
+    print('done')
 
     -- load and check
     local name2 = "loaded_foobert" .. math.random(320)
     local succ2 = av.create_double(name2)
     local vec2 = av.get(name2)
-    av.load('/tmp/av_save_load_test.dat', vec2)
+    print('loading...')
+    f = assert(io.open(filename, 'r'))
+    av.load(vec2, f)
+    f:close()
+    print('done')
 
     -- same number of elements ?
     assertEquals(#vec, #vec2)
@@ -205,6 +246,5 @@ function testParallelAppend()
     vec = nil
     av.destroy(name)
 end
-
 
 LuaUnit:main()
