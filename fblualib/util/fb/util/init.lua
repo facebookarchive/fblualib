@@ -224,6 +224,17 @@ local function set_default(table, default_cb, store, mode)
 end
 M.set_default = set_default
 
+
+-- table with customizable factory for constructing default values
+-- for keys that do not exist.
+local function defaultdict(default_value_factory)
+    local d = {}
+    set_default(d, default_value_factory, true)
+    return d
+end
+M.defaultdict = defaultdict
+
+
 -- Determine the longest prefix among a list of strings
 local function longest_common_prefix(strings)
     if #strings == 0 then
@@ -541,5 +552,6 @@ local function filter_keys(table, keys)
     return result
 end
 M.filter_keys = filter_keys
+
 
 return M

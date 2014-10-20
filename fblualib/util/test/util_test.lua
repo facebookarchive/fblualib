@@ -219,4 +219,22 @@ function testFilterKeys()
     assertEquals({foo = 42, baz = 100}, b)
 end
 
+function testDefaultDictBehavesAsExpected()
+    local d = util.defaultdict(function() return 50 end)
+    assertEquals(d[1], 50)
+    assertEquals(d.cat, 50)
+    d[1] = 10
+    assertEquals(d[1], 10)
+    d.dog = 20
+    assertEquals(d.dog, 20)
+end
+
+function testDefaultDictGivesSeparateInstances()
+    local d = util.defaultdict(function() return {} end)
+    d[1][1] = 2
+    d[2][1] = 3
+    assertEquals(d[1][1], 2)
+    assertEquals(d[2][1], 3)
+end
+
 LuaUnit:main()
