@@ -95,7 +95,6 @@ if lfs then
     table.insert(M.completers.string, function(str)
         local path, name = str:match("(.*)[\\/]+(.*)")
         path = (path or ".") .. "/"
-        name = name or str
         -- avoid to trigger an error if folder does not exists
         if not lfs.attributes(path) then return end
         for f in lfs.dir(path) do
@@ -186,7 +185,7 @@ function M.complete(word, line, startpos, endpos, keywords, get_locals)
             if idx1 == nil and idx2 == nil then
                 break
             end
-            local idx, startpat, endpat
+            local idx, startpat, endpat, endstr
             if (idx1 or math.huge) < (idx2 or math.huge) then
                 idx, startpat, endpat =
                 idx1, "%[" .. equals .. "%[", "%]" .. equals .. "%]"
