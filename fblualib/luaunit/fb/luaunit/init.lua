@@ -25,7 +25,7 @@ local cjson = require('cjson')
 function assertError(f, ...)
     -- assert that calling f with the arguments will raise an error
     -- example: assertError( f, 1, 2 ) => f(1,2) should generate an error
-    local ok, error_msg = pcall(f, ... )
+    local ok, _ = pcall(f, ... )
     if not ok then return end
     error( "Expected an error but no error generated", 2 )
 end
@@ -72,7 +72,6 @@ end
 
 local function _is_table_equals(actual, expected)
     if (type(actual) == 'table') and (type(expected) == 'table') then
-        local k,v
         for k,v in ipairs(actual) do
             if not _is_table_equals(v, expected[k]) then
                 return false
@@ -247,35 +246,35 @@ function JUnitOutput:_init()
 end
 function JUnitOutput:startSuite() end
 function JUnitOutput:startClass(className)
-    xmlFile = io.open(string.lower(className) .. ".xml", "w")
-    xmlFile:write('<testsuite name="' .. className .. '">\n')
+    g_xmlFile = io.open(string.lower(className) .. ".xml", "w")
+    g_xmlFile:write('<testsuite name="' .. className .. '">\n')
 end
 function JUnitOutput:startTest(testName)
-    if xmlFile then
-        xmlFile:write(
+    if g_xmlFile then
+        g_xmlFile:write(
             '<testcase classname="' .. self.result.currentClassName ..
             '" name="' .. testName .. '">')
     end
 end
 
 function JUnitOutput:addFailure( errorMsg, stackTrace )
-    if xmlFile then
-        xmlFile:write(
+    if g_xmlFile then
+        g_xmlFile:write(
             '<failure type="lua runtime error">' .. errorMsg .. '</failure>\n')
-        xmlFile:write(
+        g_xmlFile:write(
             '<system-err><![CDATA[' .. stackTrace .. ']]></system-err>\n')
     end
 end
 
 function JUnitOutput:endTest(testHasFailure)
-    if xmlFile then xmlFile:write('</testcase>\n') end
+    if g_xmlFile then g_xmlFile:write('</testcase>\n') end
 end
 
 function JUnitOutput:endClass() end
 
 function JUnitOutput:endSuite()
-    if xmlFile then xmlFile:write('</testsuite>\n') end
-    if xmlFile then xmlFile:close() end
+    if g_xmlFile then g_xmlFile:write('</testsuite>\n') end
+    if g_xmlFile then g_xmlFile:close() end
     return self.result.failureCount
 end
 
@@ -382,7 +381,7 @@ function TextOutput:endClass()
 end
 
 function TextOutput:displayOneFailedTest( failure )
-    testName, errorMsg, stackTrace = unpack( failure )
+    local testName, errorMsg, stackTrace = unpack( failure )
     print(">>> " .. testName .. " failed")
     print( errorMsg )
     if self.verbosity > 1 then
@@ -527,7 +526,7 @@ end
 
 --------------[[ Runner ]]-----------------
 
-SPLITTER = '\n>----------<\n'
+local SPLITTER = '\n>----------<\n'
 
 local abort_on_error = os.getenv('LUAUNIT_ABORT_ON_ERROR')
 
@@ -544,7 +543,7 @@ function LuaUnit:protectedCall( classInstance , methodInstance)
 
     local ok, errorMsg = xpcall(methodInstance, err_handler, classInstance)
     if not ok then
-        t = pl.stringx.split(errorMsg, SPLITTER)
+        local t = pl.stringx.split(errorMsg, SPLITTER)
         local stackTrace = string.sub(t[2] or '',2)
         self:addFailure( t[1], stackTrace )
     end
@@ -724,7 +723,7 @@ end
 function LuaUnit:runSuite(...)
     self:startSuite()
 
-    args={...}
+    local args={...}
     if #args == 0 then
         args = arg
     end
