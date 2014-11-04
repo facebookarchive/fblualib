@@ -82,7 +82,6 @@ local function wrap(name)
         if not level then
             level = 1
         end
-        leve = level + 1
         return lib[name](code, get_vars(level), true)
     end
     M['l' .. name] = wrapped
