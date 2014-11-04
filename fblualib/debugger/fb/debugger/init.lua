@@ -27,7 +27,6 @@ local stepping_depth
 local current_file_contents
 local current_start_line
 local current_line
-local skip_levels = 0
 
 local function prompt_exit()
     io.stdout:write('Do you really want to exit debugger ([y]/n)? ')
@@ -140,7 +139,7 @@ local function save_vars(level)
     vars['__LOCALS__'] = locals
 
     -- get varargs
-    i = -1
+    local i = -1
     local p = nlocals + 1
     while true do
         local name, value = debug.getlocal(level, i)
@@ -184,7 +183,6 @@ local function restore_vars(level, vars)
     local func = info.func
 
     if func then
-        local upvalues = vars['__UPVALUES__']
         for i, names in pairs(vars['__UPVALUES__']) do
             debug.setupvalue(func, i, vars[names[2]])
         end
@@ -208,7 +206,6 @@ function DebugStack:_init()
     self.current_frame = 1
 
     self.frames = {}
-    local maybe_skip = true
     self.skip_frames = 0
     for i = 1, n do
         local fn = i + frame_offset
@@ -384,7 +381,6 @@ function DebugStack:_get_location(str)
 end
 
 function DebugStack:list(str)
-    local location, line
     if (not current_file_contents) or (str and str ~= '') then
         local location, line = self:_get_location(str)
         current_line = line
@@ -688,32 +684,6 @@ function DebugStack:_process(line)
     return fn(self, args)
 end
 
-local function read_line()
-    io.stdout:write('DEBUG> ')
-    return io.stdin:read()
-end
-
-local function debug_io_repl(dstack)
-    dstack:_new_location()
-    while true do
-        local line = read_line()
-        local mode
-        if line then
-            local status, m = pcall(
-                function() return dstack:_process(line) end)
-            if not status then
-                print('Error: ' .. m)
-            else
-                mode = m
-            end
-        end
-        if mode == 'continue' then
-            return true
-        elseif mode == 'quit' then
-            return false
-        end
-    end
-end
 
 local eline_dstack
 local eline_keywords = {}
@@ -763,11 +733,8 @@ end
 
 local debug_repl = debug_readline_repl
 
-local stack_level = {}
-
 function debug_hook(event, line_num)
     local info
-    local has_source = false
     if event == 'line' then
         local do_break = false
         if stepping and stepping_thread == coroutine.running() then
