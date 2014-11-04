@@ -16,20 +16,6 @@ local function sorted(t)
     return pl.List(t):sort()
 end
 
-local function print_values(t)
-    for _, v in ipairs(t) do
-        print(v)
-    end
-end
-
-local function check_topo_sort(ts, edges)
-    local imap = pl.tablex.index_map(ts)
-    for _, edge in ipairs(edges) do
-        local v, w = table.unpack(edge)
-        assertTrue(imap[v] < imap[w])
-    end
-end
-
 TestDigraph = {}
 
 function TestDigraph:setUp()
