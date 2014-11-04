@@ -52,7 +52,6 @@
 -- (matching specified patterns) fire.
 
 local pl = require('pl.import_into')()
-local printf = pl.utils.printf
 local util = require('fb.util')
 local eh = require('fb.util.error')
 

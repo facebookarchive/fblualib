@@ -47,7 +47,6 @@ local coroutine_pcstack = {}  -- keyed by coroutine id
 setmetatable(coroutine_pcstack, {__mode = 'k'})  -- weak keys
 
 -- Save the actual pcall and xpcall functions
-local real_pcall = pcall
 local real_xpcall = xpcall
 
 local function current_pcstack()

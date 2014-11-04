@@ -192,7 +192,6 @@ end
 
 function Deque:__call(...)
     assert(self == Deque)
-    local a = {...}
     local obj = {}
     -- Do this before setmetatable, so that initialization (self.first, etc)
     -- doesn't go through __newindex
@@ -454,7 +453,7 @@ ffi.metatype(std_string, {
             obj._p = util_lib.stdStringClone(s._p)
         else
             -- Lua string
-            str = tostring(s)
+            local str = tostring(s)
             obj._p = util_lib.stdStringNewFromString(str, #str)
         end
 

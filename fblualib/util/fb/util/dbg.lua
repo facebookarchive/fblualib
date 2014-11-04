@@ -10,7 +10,7 @@
 local pl = require('pl.import_into')()
 local M = {}
 
--- Facility for conditional debugg output. Controlled via the 'DBG' environment
+-- Facility for conditional debug output. Controlled via the 'DBG' environment
 -- variable, which is a comma-separated list of name=<threshold> pairs.
 -- Typical use might be:
 --
