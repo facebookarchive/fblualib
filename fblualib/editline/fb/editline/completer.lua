@@ -107,6 +107,21 @@ if lfs then
     end)
 end
 
+-- tensor/storage/torch-classes completer
+table.insert(M.completers.value, function(t, sep)
+                if not torch or (torch and torch.typename(t) == nil) then
+                   return
+                end
+                for k, v in pairs(t.__metatable) do
+                   if type(k) == "number" and sep == "[" then
+                      coyield(k.."]")
+                   elseif type(k) == "string"
+                   and (sep ~= ":" or type(v) == "function") then
+                      coyield(k)
+                   end
+                end
+end)
+
 -- This function is called back by C function do_completion, itself called
 -- back by readline library, in order to complete the current input line.
 function M.complete(word, line, startpos, endpos, keywords, get_locals)
