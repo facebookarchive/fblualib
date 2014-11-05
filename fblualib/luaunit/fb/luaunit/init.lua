@@ -292,6 +292,7 @@ function FBJsonOutput:startTest(testName)
     }))
     io.stderr:write('\n')
     self.failureMessages = {}
+    self.startTime = os.time()
 end
 
 function FBJsonOutput:addFailure(errorMsg, stackTrace)
@@ -311,7 +312,9 @@ function FBJsonOutput:endTest()
         op = 'test_done',
         test = self.result.currentTestName,
         status = status,
-        details = details
+        details = details,
+        start_time = self.startTime,
+        end_time = os.time(),
     }))
     io.stderr:write('\n')
     self.failureMessages = {}
