@@ -199,8 +199,9 @@ class AtomicVector {
 
   // append: returns with the value appended to the end of the
   // vector. Since our vector can only grow, the semantic here is
-  // reasonably well-posed.
-  void append(T val) {
+  // reasonably well-posed. Returns position of the value in the
+  // vector.
+  size_t append(T val) {
   restart:
     auto insertionPoint = m_size.load();
     auto& bucket = indexToBucket(insertionPoint);
@@ -263,6 +264,7 @@ class AtomicVector {
     // quite (lock,wait,obstruction)-free; inserters essentially "lock" the
     // right to insert by cas'ing that slot.
     m_size.fetch_add(1);
+    return insertionPoint;
   }
 
   T read(BucketIndex slot) const {

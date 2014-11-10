@@ -21,9 +21,10 @@ function testSmoke()
 
     -- Table-like operations?
     local tensor = torch.randn(12, 10)
-    av.append(vec, tensor)
+    local pos = av.append(vec, tensor)
     assertEquals(#vec, 1)
-    local t2 = vec[1]
+    assertEquals(pos, #vec)
+    local t2 = vec[pos]
     assertEquals(t2, tensor)
 
     -- Overwrite.
@@ -37,8 +38,9 @@ function testSmoke()
     -- Append
     local t4 = torch.randn(17)
     local t4copy = t4
-    av.append(vec, t4)
+    pos = av.append(vec, t4)
     assertEquals(#vec, 2)
+    assertEquals(pos, #vec)
     assertEquals(vec[1], t3)
     assertEquals(vec[1], t3copy)
     assertEquals(t4, vec[2])

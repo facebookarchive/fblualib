@@ -114,9 +114,9 @@ class TorchAtomicVector : public TorchAtomicVectorIf {
   }
 
   virtual int luaAppend(lua_State* L) {
-    auto t = checkTensor(L, 2);
-    m_av.append(t);
-    return 0;
+    size_t sz = m_av.append(checkTensor(L, 2));
+    lua_pushnumber(L, sz + 1); // To lua
+    return 1;
   }
 
   virtual int luaSize(lua_State* L) {
