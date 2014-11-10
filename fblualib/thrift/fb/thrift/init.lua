@@ -25,7 +25,7 @@ local FilePtr = ffi.typeof('struct { void* p; }')
 -- FFI converts from Lua file objects to FILE*, but that's not directly
 -- accessible from the standard Lua/C API. We'll encode the FILE* as a Lua
 -- string and decode it in libthrift.
-local function encode_file(f)
+function M.encode_file(f)
     assert(io.type(f) == 'file')
     local fp = FilePtr(f)
     return ffi.string(fp, ffi.sizeof(fp))
@@ -37,7 +37,7 @@ M.to_string = lib.to_string
 
 -- Serialize to a Lua open file
 local function to_file(obj, f, codec)
-    return lib._to_file(obj, encode_file(f), codec)
+    return lib._to_file(obj, M.encode_file(f), codec)
 end
 M.to_file = to_file
 
@@ -47,7 +47,7 @@ M.from_string = lib.from_string
 
 -- Deserialize from a Lua open file; the file pointer is moved past the data.
 local function from_file(f, codec)
-    return lib._from_file(encode_file(f), codec)
+    return lib._from_file(M.encode_file(f), codec)
 end
 M.from_file = from_file
 

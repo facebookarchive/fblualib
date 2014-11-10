@@ -119,6 +119,9 @@ void luaPushStorage(lua_State* L, thpp::Storage<NT> storage);
 folly::Optional<size_t> luaListSize(lua_State* L, int ud);
 size_t luaListSizeChecked(lua_State* L, int ud);
 
+// Get a FILE* encoded as a Lua string.
+FILE* luaDecodeFILE(lua_State* L, int index);
+
 }  // namespaces
 
 #include <fblualib/LuaUtils-inl.h>

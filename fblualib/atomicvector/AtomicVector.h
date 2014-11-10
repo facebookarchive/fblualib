@@ -9,16 +9,23 @@
  */
 
 #pragma once
+
 #include <atomic>
 #include <stdexcept>
+#include <thread>
 
 #include <stdlib.h>
 #include <pthread.h>
 #include <assert.h>
+#include <unistd.h>
+#include <sys/mman.h>
 
 #include <folly/Bits.h>
 
+#include <fblualib/thrift/LuaObject.h>
+
 template <typename T> class Refcount;
+template <typename T> class Serde;
 
 namespace fblualib {
 
@@ -300,6 +307,114 @@ class AtomicVector {
     return m_size.load();
   }
 
+  template<typename Lambda, typename Datum>
+  static void fileOp(Lambda l, Datum* data, size_t nData, FILE* file) {
+    size_t nFrobbed = l(data, sizeof(Datum), nData, file);
+    if (nFrobbed != nData) {
+      throw std::runtime_error("file operation failed");
+    }
+  }
+
+  template<typename Lambda, typename Datum>
+  static void fileOp(Lambda l, Datum* data, FILE* file) {
+    fileOp(l, data, 1, file);
+  }
+
+  void load(FILE* file) {
+    int magic;
+    size_t sz;
+    fileOp(fread, &magic, file);
+    if (magic != 0x04081977) {
+      throw std::runtime_error("bad magic value loading atomicvec");
+    }
+    fileOp(fread, &sz, file);
+    std::vector<size_t> directory(sz);
+    fileOp(fread, &directory[0], sz, file);
+
+    growUnsafe(sz);
+    auto nThreads = sysconf(_SC_NPROCESSORS_ONLN);
+    std::vector<std::thread> deserThreads;
+    // Get the UNIX fd for pread. We'll seek the FILE* manually later to
+    // fit caller expectations.
+    int fd = fileno(file);
+    fflush(file);
+    size_t finalFilePtr;
+    for (int tid = 0; tid < nThreads; tid++) {
+      deserThreads.emplace_back([tid, sz, fd, nThreads, this,
+                                &directory, &finalFilePtr] {
+        auto safe_pread = [&](int fd, void* dest, size_t sz, off_t off) {
+          auto retval = pread(fd, dest, sz, off);
+          if (retval != sz) {
+            auto msg = folly::format("pread failed: {}", strerror(errno));
+            throw std::runtime_error(msg.str());
+          }
+        };
+        std::vector<uint8_t> bytes(1 << 20);
+        // Consume the file in a breadth-first fashion; thread 0 is decoding
+        // item 0 while thread 1 is decoding item 1. This way we plow through
+        // the file in roughly sequential order.
+        for (size_t i = tid; i < sz; i += nThreads) {
+          size_t entrySz;
+          safe_pread(fd, &entrySz, sizeof(entrySz), directory[i]);
+          if (entrySz > bytes.size()) bytes.resize(entrySz);
+          safe_pread(fd, &bytes[0], entrySz, directory[i] + sizeof(entrySz));
+          if (i == sz - 1) {
+            finalFilePtr = directory[i] + entrySz + sizeof(entrySz);
+          }
+          folly::ByteRange range(&bytes[0], entrySz);
+          try {
+            write(i, Serde<T>::load(&range));
+          } catch(std::runtime_error& e) {
+            fprintf(stderr, "hmm, could not deserialize: %s\n", e.what());
+            fprintf(stderr, "at dir %zd tid %d entry length %zd offset %zd\n",
+                   i, tid, entrySz, directory[i]);
+            throw;
+          }
+        }
+      });
+    }
+
+    // Clean up threads and the file pointer.
+    for (auto& t: deserThreads) t.join();
+    fseek(file, finalFilePtr, SEEK_SET);
+  }
+
+  // save() is inherently racy; if other threads are still appending we may miss
+  // new entries, but all vectors visible from the calling thread's timeline
+  // will be serialized.
+  void save(FILE* file) const {
+    const int kMagic = 0x04081977;
+    fileOp(fwrite, &kMagic, file);
+
+    size_t sz = size();
+    fileOp(fwrite, &sz, file);
+
+    // Next up is a directory of file offsets.
+    std::vector<size_t> offsets(sz);
+    size_t directoryOff = ftell(file);
+    fseek(file, sz * sizeof(size_t), SEEK_CUR);
+    size_t dataStart = ftell(file);
+    size_t i;
+    for (i = 0; i < sz; i++) {
+      auto val = read(i);
+      SCOPE_EXIT {
+        Refcount<T>().dec(val);
+      };
+      offsets[i] = ftell(file);
+      fblualib::thrift::StringWriter sw;
+      auto str = Serde<T>::save(val, sw);
+      auto strsz = str.size();
+      fileOp(fwrite, &strsz, file);
+      fileOp(fwrite, str.data(), strsz, file);
+    }
+    CHECK(i == sz);
+    size_t end = ftell(file);
+    fseek(file, directoryOff, SEEK_SET);
+    fileOp(fwrite, &offsets[0], offsets.size(), file);
+    assert(ftell(file) == dataStart);
+    fseek(file, end, SEEK_SET);
+  }
+
  protected:
   static const BucketIndex kMaxBuckets = 32;
   std::atomic<Bucket*> m_buckets[kMaxBuckets];
@@ -310,12 +425,16 @@ class AtomicVector {
     return folly::findLastSet(val);
   }
 
+  static int indexToBucketIndex(BucketIndex index) {
+    return highOrderBit(index + 1) - 1; // sic
+  }
+
   const std::atomic<Bucket*>& indexToBucket(BucketIndex index) const {
-    return m_buckets[highOrderBit(index + 1) - 1]; // sic
+    return m_buckets[indexToBucketIndex(index)];
   }
 
   std::atomic<Bucket*>& indexToBucket(BucketIndex index) {
-    return m_buckets[highOrderBit(index + 1) - 1]; // sic
+    return m_buckets[indexToBucketIndex(index)];
   }
 
   BucketIndex indexToIntraBucketIndex(BucketIndex index, int bucket) const {
@@ -324,6 +443,17 @@ class AtomicVector {
     assert(index >= bucketStart);
     assert(index < bucketEnd);
     return index - bucketStart;
+  }
+
+ private:
+  void growUnsafe(size_t size) {
+    assert(m_size.load() == 0);
+    m_size.store(size);
+    auto targetBucketIndex = indexToBucketIndex(size);
+    for (int i = 0; i <= targetBucketIndex; i++) {
+      assert(!m_buckets[i].load());
+      m_buckets[i].store(new Bucket(1 << i));
+    }
   }
 };
 

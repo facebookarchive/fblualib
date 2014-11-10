@@ -118,5 +118,20 @@ size_t luaListSizeChecked(lua_State* L, int ud) {
   return *v;
 }
 
+// LuaJIT allows conversion from Lua files and FILE*, but only through FFI,
+// which is incompatible with the standard Lua/C API. So, in Lua code,
+// we encode the pointer as a Lua string and pass it down here.
+FILE* luaDecodeFILE(lua_State* L, int index) {
+  // Black magic. Don't look.
+  auto filePtrData = luaGetStringChecked(L, index, true /*strict*/);
+  luaL_argcheck(L,
+                filePtrData.size() == sizeof(void*),
+                index,
+                "expected FILE* encoded as string");
+  FILE* fp = nullptr;
+  memcpy(&fp, filePtrData.data(), sizeof(void*));
+  return fp;
+}
+
 }  // namespaces
 

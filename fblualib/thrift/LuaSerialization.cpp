@@ -88,21 +88,6 @@ int serializeToString(lua_State* L) {
   return 1;
 }
 
-// LuaJIT allows conversion from Lua files and FILE*, but only through FFI,
-// which is incompatible with the standard Lua/C API. So, in Lua code,
-// we encode the pointer as a Lua string and pass it down here.
-FILE* getFP(lua_State* L, int index) {
-  // Black magic. Don't look.
-  auto filePtrData = luaGetStringChecked(L, index, true /*strict*/);
-  luaL_argcheck(L,
-                filePtrData.size() == sizeof(void*),
-                index,
-                "expected FILE* encoded as string");
-  FILE* fp = nullptr;
-  memcpy(&fp, filePtrData.data(), sizeof(void*));
-  return fp;
-}
-
 int serializeToFile(lua_State* L) {
   auto codecType =
     (lua_type(L, 3) != LUA_TNIL && lua_type(L, 3) != LUA_TNONE ?
@@ -112,7 +97,7 @@ int serializeToFile(lua_State* L) {
   uint64_t chunkSize =
     luaChunkSize ? *luaChunkSize : std::numeric_limits<uint64_t>::max();
 
-  auto fp = getFP(L, 2);
+  auto fp = luaDecodeFILE(L, 2);
 
   Serializer serializer;
   auto obj = serializer.toThrift(L, 1);
@@ -144,7 +129,7 @@ int deserializeFromString(lua_State* L) {
 }
 
 int deserializeFromFile(lua_State* L) {
-  auto fp = getFP(L, 1);
+  auto fp = luaDecodeFILE(L, 1);
   FILEReader reader(fp);
   return doDeserialize(L, decode(reader));
 }

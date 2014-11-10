@@ -17,28 +17,44 @@
 
 using namespace fblualib;
 using namespace fblualib::detail;
+using namespace fblualib::thrift;
 using namespace std;
 
-// Teach AtomicVector how to refcount our tensors.
-template<> struct Refcount<THFloatTensor*> {
-  void inc(THFloatTensor* t) {
-    THFloatTensor_retain(t);
-  }
+// Teach AtomicVector how to refcount and serialize our tensors.
+#define TENSOR_IMPL(T, Real)                          \
+template<> struct Refcount<T*> {                      \
+  void inc(T* t) {                                    \
+    T ## _retain(t);                                  \
+  }                                                   \
+  void dec(T* t) {                                    \
+    T ## _free(t);                                    \
+  }                                                   \
+};                                                    \
+                                                      \
+template<> struct Serde<T*> {                         \
+  static folly::StringPiece save(T* t, StringWriter& sw) { \
+    auto thpp = thpp::Tensor<Real>(t);                \
+    auto luaObj = make(thpp);                         \
+    const auto codec = thpp.size() > 1024 ?           \
+      folly::io::CodecType::LZ4 :                     \
+      folly::io::CodecType::NO_COMPRESSION;           \
+    cppEncode(luaObj, codec, sw);                     \
+    return folly::StringPiece(sw.finish());           \
+  }                                                   \
+  static T* load(folly::ByteRange* br) {              \
+    StringReader sr(br);                              \
+    auto decoded = cppDecode(sr);                     \
+    auto thppTensor = getTensor<Real>(std::move(decoded)); \
+    auto retval = thppTensor.moveAsTH();              \
+    /* Caller's job to incref if necessary. */        \
+    return retval;                                    \
+  }                                                   \
+}
 
-  void dec(THFloatTensor* t) {
-    THFloatTensor_free(t);
-  }
-};
+TENSOR_IMPL(THFloatTensor, float);
+TENSOR_IMPL(THDoubleTensor, double);
 
-template<> struct Refcount<THDoubleTensor*> {
-  void inc(THDoubleTensor* t) {
-    THDoubleTensor_retain(t);
-  }
-
-  void dec(THDoubleTensor* t) {
-    THDoubleTensor_free(t);
-  }
-};
+#undef TENSOR_IMPL
 
 namespace {
 
@@ -52,6 +68,8 @@ struct TorchAtomicVectorIf {
   virtual int luaWrite(lua_State* L) = 0;
   virtual int luaAppend(lua_State* L) = 0;
   virtual int luaSize(lua_State* L) = 0;
+  virtual int luaSave(lua_State* L) = 0;
+  virtual int luaLoad(lua_State* L) = 0;
 };
 
 TorchAtomicVectorIf*
@@ -104,6 +122,18 @@ class TorchAtomicVector : public TorchAtomicVectorIf {
   virtual int luaSize(lua_State* L) {
     lua_pushnumber(L, m_av.size());
     return 1;
+  }
+
+  virtual int luaLoad(lua_State* L) {
+    auto file = luaDecodeFILE(L, 2);
+    m_av.load(file);
+    return 0;
+  }
+
+  virtual int luaSave(lua_State* L) {
+    auto file = luaDecodeFILE(L, 2);
+    m_av.save(file);
+    return 0;
   }
 };
 
@@ -177,12 +207,23 @@ int size(lua_State* L) {
   return checkAtomicVec(L, 1)->luaSize(L);
 }
 
+int load(lua_State* L) {
+  return checkAtomicVec(L, 1)->luaLoad(L);
+}
+
+int save(lua_State* L) {
+  return checkAtomicVec(L, 1)->luaSave(L);
+}
+
 const struct luaL_reg moduleFuncs[] = {
   { "create_float", createFloat },
   { "create_double", createDouble },
   { "destroy", destroy },
   { "get", get },
   { "append", append },
+
+  { "load", load },
+  { "save",  save },
 
   { nullptr, nullptr },
 };

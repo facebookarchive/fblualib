@@ -76,8 +76,8 @@ local function buildHugeVector(name, numTensors, numThreads)
             assert(vec ~= nil)
             assert(type(vec) == 'userdata')
             for j = 1, g_numTensorsPerThread do
-                local x = math.random(1, 40)
-                local y = math.random(1, 20)
+                local x = 1
+                local y = math.random(1, 100)
                 av.append(vec, torch.randn(x, y))
             end
         end)
@@ -87,34 +87,31 @@ end
 
 function testLoadAndSave()
     local av = require('fb.atomicvector')
+    local file = require('fb.util.file')
     require('torch')
 
     local name = "ldAndSave" .. math.random(320)
 
     local nElements = 1e5
+    local vec
     local numThreads = 40
-    print('building enormous vector...')
-    buildHugeVector(name, nElements, numThreads)
-    print('done')
-    local vec = av.get(name)
-
-    -- save to file
-    print('saving...')
     local filename = '/tmp/av_save_load_test.dat'
+
+    file.truncate(filename, 0)
+    buildHugeVector(name, nElements, numThreads)
+    vec = av.get(name)
+
     local f = assert(io.open(filename, 'w'))
     av.save(vec, f)
     f:close()
-    print('done')
 
     -- load and check
     local name2 = "loaded_foobert" .. math.random(320)
     local succ2 = av.create_double(name2)
     local vec2 = av.get(name2)
-    print('loading...')
     f = assert(io.open(filename, 'r'))
     av.load(vec2, f)
     f:close()
-    print('done')
 
     -- same number of elements ?
     assertEquals(#vec, #vec2)
@@ -146,10 +143,10 @@ function testErrorClib()
     vec = nil
     av.destroy(name)
 
-    av.create_float(name)
+    av.create_double(name)
     local vec = av.get(name)
     local success, message = pcall(function()
-        av.append(vec, torch.randn(3))
+        av.append(vec, torch.randn(3):float())
     end)
     assertEquals(success, false)
     vec = nil
