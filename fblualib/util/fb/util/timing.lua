@@ -82,7 +82,7 @@ end
 
 -- Clear all events, reset the start time, reinitialize, enable
 function Recorder:start(name)
-    self:reset()
+    self:_reset_events()
     self.name = (name or 'default_path'):gsub('[:%s]', '_')
     return self:resume()
 end
@@ -109,7 +109,7 @@ end
 function Recorder:finish(...)
     self:stop()
     self:dump(...)
-    self:reset()
+    self:_reset_events()
 end
 
 -- Dump the log to stdout.
@@ -149,11 +149,15 @@ function Recorder:dump(pattern_str, start)
     end
 end
 
--- Reset the recorder to a pristine state.
-function Recorder:reset()
+function Recorder:_reset_events()
     self:stop()
     self.events:clear()
     self.name = nil
+end
+
+-- Reset the recorder to a pristine state.
+function Recorder:reset()
+    self:_reset_events()
     self.patterns = pl.List()
     self.registered_patterns = pl.List()
 end
