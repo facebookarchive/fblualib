@@ -225,6 +225,7 @@ void Serializer::doSerializeTable(LuaTable& obj,
 
   // Get list-like elements (consecutive integers, starting at 1)
   auto listSize = lua_objlen(L, index);
+  auto lastDenseIndex = 0;
   XLOG << "listSize = " << listSize;
   if (listSize > 0) {
     obj.__isset.listKeys = true;
@@ -232,9 +233,9 @@ void Serializer::doSerializeTable(LuaTable& obj,
     for (int i = 1; i <= listSize; ++i) {
       lua_rawgeti(L, index, i);
       if (lua_isnil(L, -1)) {
-        // lua_objlen will return an integer n such that table[n] exists
-        // but table[n+1] doesn't; not necessarily the smallest such n.
-        // So we check.
+        // lua_objlen is undefined for any kind of sparse indices, so remember
+        // how far we got.
+        lastDenseIndex = i - 1;
         lua_pop(L, 1);
         break;
       }
@@ -275,7 +276,7 @@ void Serializer::doSerializeTable(LuaTable& obj,
       auto val = int64_t(dval);
       if (double(val) == dval) {
         // Skip over elements we've already seen (list-like)
-        if (val < 1 || val > listSize) {
+        if (val < 1 || val > lastDenseIndex) {
           obj.__isset.intKeys = true;
           XLOG << "(int) [" << val << "]";
           doSerialize(obj.intKeys[val], L, -1, level + 1);

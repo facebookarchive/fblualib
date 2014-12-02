@@ -66,6 +66,43 @@ function testThriftSerialization()
     assertTensorEquals(t, thrift.from_string(thrift.to_string(t)))
 end
 
+function testThriftSerializationBigSparseTables()
+    local function size(t)
+        local c = 0
+        for k, v in pairs(t) do
+            c = c + 1
+        end
+        return c
+    end
+
+    local function gen_huge_sparse_table()
+        local t = { }
+        -- Fill it with sparse entries until #t returns something bogus.
+        while #t == 0 do
+            t[math.random(3000)] = 4
+        end
+        assert(size(t) ~= #t)
+        return t
+    end
+
+    local function tables_equal(t1, t2)
+        for k,v in pairs(t1) do
+            if not t2[k] then
+                error(("missing key %s"):format(k))
+            end
+            if v ~= t2[k] then
+                error(("wrong value for key %s: is %s, should be %s"):format(
+                       k, t2[k], t1[k]))
+            end
+        end
+        return true
+    end
+
+    local t = gen_huge_sparse_table()
+    local tt = thrift.from_string(thrift.to_string(t))
+    -- NB: you are not guaranteed that #t == #tt!
+    assert(tables_equal(t, tt))
+end
 
 function testThriftSerializationToFile()
     local file = io.tmpfile()
