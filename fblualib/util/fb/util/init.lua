@@ -541,10 +541,10 @@ if torch then
 end
 
 local function filter_keys(table, keys)
-    keys = pl.tablex.makeset(keys)
     local result = {}
-    for k, v in pairs(table) do
-        if keys[k] then
+    for _, k in ipairs(keys) do
+        local v = table[k]
+        if v then
             result[k] = v
         end
     end
