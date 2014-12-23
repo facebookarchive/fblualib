@@ -14,6 +14,7 @@ local thrift = require('fb.thrift')
 local M = {
     create_float = clib.create_float,
     create_double = clib.create_double,
+    create_int = clib.create_int,
     get = clib.get,
     destroy = clib.destroy,
     append = clib.append,

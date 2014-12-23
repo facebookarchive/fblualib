@@ -50,6 +50,49 @@ function testSmoke()
     collectgarbage()
 end
 
+function testSmokeInt()
+    local av = require('fb.atomicvector')
+    require('torch')
+
+    local name = "foobert" .. math.random(320)
+    local succ = av.create_int(name)
+    local vec = av.get(name)
+    assertEquals(succ, true)
+    assertEquals(#vec, 0)
+
+    -- Table-like operations?
+    local tensor_double = torch.randn(12, 10)
+    local tensor = torch.IntTensor(tensor_double:size()):copy(tensor_double)
+    local pos = av.append(vec, tensor)
+    assertEquals(#vec, 1)
+    assertEquals(pos, #vec)
+    local t2 = vec[pos]
+    assertEquals(t2, tensor)
+
+    -- Overwrite.
+    local t3_double = torch.randn(32)
+    local t3 = torch.IntTensor(t3_double:size()):copy(t3_double)
+    local t3copy = t3
+    vec[1] = t3
+    assertEquals(#vec, 1)
+    assertEquals(vec[1], t3copy)
+    assertEquals(vec[1], t3)
+
+    -- Append
+    local t4_double = torch.randn(17)
+    local t4 = torch.IntTensor(t4_double:size()):copy(t4_double)
+    pos = av.append(vec, t4)
+    assertEquals(#vec, 2)
+    assertEquals(pos, #vec)
+    assertEquals(vec[1], t3)
+    assertEquals(vec[1], t3copy)
+    assertEquals(t4, vec[2])
+
+    vec = nil
+    av.destroy(name)
+    collectgarbage()
+end
+
 -- Helper to somewhat rapidly build a large vector
 local function buildHugeVector(name, numTensors, numThreads)
     local threads = require('threads')

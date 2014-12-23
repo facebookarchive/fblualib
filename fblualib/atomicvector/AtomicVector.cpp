@@ -53,6 +53,7 @@ template<> struct Serde<T*> {                         \
 
 TENSOR_IMPL(THFloatTensor, float);
 TENSOR_IMPL(THDoubleTensor, double);
+TENSOR_IMPL(THIntTensor, int);
 
 #undef TENSOR_IMPL
 
@@ -161,6 +162,10 @@ int createFloat(lua_State* L) {
   return create<float>(L);
 }
 
+int createInt(lua_State* L) {
+  return create<int>(L);
+}
+
 int destroy(lua_State* L) {
   auto name = luaL_checkstring(L, 1);
   auto removed = g_vecTab.erase(name);
@@ -218,6 +223,7 @@ int save(lua_State* L) {
 const struct luaL_reg moduleFuncs[] = {
   { "create_float", createFloat },
   { "create_double", createDouble },
+  { "create_int", createInt },
   { "destroy", destroy },
   { "get", get },
   { "append", append },
