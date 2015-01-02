@@ -13,6 +13,8 @@
 -- * Deque, a deque implementation
 -- * set_default, modify a table to always return (and optionally store)
 --   a default value
+-- * defaultdict, return a table modified to return (and store) a default value
+--   for missing keys, similar to Python's collections.defauldict
 --
 -- String utilities:
 -- * longest_common_prefix, return the longest common prefix of multiple
@@ -25,8 +27,10 @@
 --   go inside a C string (see folly::cEscape in <folly/String.h>)
 --
 -- Table utilities:
--- * filter_keys: given a table and a list of keys, return a subset of
---   corresponding to the list of keys
+-- * filter_keys: given a table and a list of keys, return a subset of the table
+--   consisting of the elements whose keys are in the list of keys
+-- * is_list: check if a table is list-like (all keys are consecutive
+--   integers starting at 1). O(N) in the size of the table.
 --
 -- Filesystem utilities:
 -- * create_temp_dir, create a temporary directory
@@ -54,6 +58,7 @@ if not ok then torch = nil end
 local module_config = require('fb.util._config')
 
 local M = {}
+
 
 -- Deque. Supports the usual (push|pop)_(front|back) operations.
 --
@@ -203,12 +208,17 @@ end
 setmetatable(Deque, Deque)
 M.Deque = Deque
 
+
 -- Set a callback that is called to obtain the default value for a table;
 -- similar to Python's collections.defaultdict. (It must be a callback so you
 -- create a new instance every time; you can't set the default value to {}, or
 -- all elements will default to the *same* object!)
+--
 -- If store is true, then a lookup for an element that doesn't exist
 -- will store the default value in the table.
+--
+-- mode is the weakness mode as in the __mode field in the metatable
+-- (nil, 'k', 'v', 'kv')
 local function set_default(table, default_cb, store, mode)
     assert(not getmetatable(table))
     assert(type(default_cb) == 'function')
@@ -259,9 +269,11 @@ local function longest_common_prefix(strings)
 end
 M.longest_common_prefix = longest_common_prefix
 
+
 ffi.cdef([=[
 char* mkdtemp(char*);
 ]=])
+
 
 -- Create a temporary directory; prefix is the prefix of the directory name
 -- (a random suffix will be added). If prefix is relative, we'll create the
@@ -284,6 +296,7 @@ local function create_temp_dir(prefix)
 end
 M.create_temp_dir = create_temp_dir
 
+
 local util_lib = ffi.load(module_config.clib)
 M._clib = util_lib
 
@@ -294,26 +307,36 @@ void sleepMicroseconds(int64_t);
 uint32_t randomNumberSeed();
 ]=])
 
+
+-- Return time as a floating-point number of seconds since Epoch
 local function time()
     return tonumber(util_lib.getMicrosecondsRealtime()) / 1e6
 end
 M.time = time
 
+
+-- Return time as a floating-point number of seconds since an unspecified
+-- time; never goes backwards -- use for measuring intervals.
 local function monotonic_clock()
     return tonumber(util_lib.getMicrosecondsMonotonic()) / 1e6
 end
 M.monotonic_clock = monotonic_clock
 
+
+-- Sleep for a floating point number of seconds
 local function sleep(s)
     assert(s >= 0)
     util_lib.sleepMicroseconds(s * 1e6)
 end
 M.sleep = sleep
 
+
+-- Return a "good" random number seed
 local function random_seed()
     return tonumber(util_lib.randomNumberSeed())
 end
 M.random_seed = random_seed
+
 
 ffi.cdef([=[
 void* stdStringNew();
@@ -334,6 +357,7 @@ size_t stdStringSize(const void*);
 const char* cEscape(const char*, size_t, void*);
 const char* cUnescape(const char*, size_t, void*);
 ]=])
+
 
 -- FFI class that wraps st::string
 local std_string = ffi.typeof('struct { void* _p; }')
@@ -486,7 +510,9 @@ ffi.metatype(std_string, {
 })
 M.std_string = std_string
 
+
 local c_escape_buf = std_string()
+
 
 -- C-Escape a string, making it suitable for representation as a C string
 -- literal.
@@ -500,6 +526,7 @@ local function c_escape(str)
 end
 M.c_escape = c_escape
 
+
 -- C-Unescape a string, the opposite of c_escape, above.
 local function c_unescape(str)
     c_escape_buf:clear()
@@ -510,6 +537,7 @@ local function c_unescape(str)
     return tostring(c_escape_buf)
 end
 M.c_unescape = c_unescape
+
 
 if torch then
     M.find = function(byte_input)
@@ -540,6 +568,9 @@ if torch then
     end
 end
 
+
+-- Return a subset of "table" which contains only the elements whose keys
+-- are in the list "keys"
 local function filter_keys(table, keys)
     local result = {}
     for _, k in ipairs(keys) do
@@ -551,6 +582,24 @@ local function filter_keys(table, keys)
     return result
 end
 M.filter_keys = filter_keys
+
+
+-- Return true if the table "table" is list-like (all its keys are consecutive
+-- integers starting at 1); return false otherwise. O(N) in the size of the
+-- table.
+local function is_list(table)
+    local n = 0
+    local hash_size = #table
+    for k, _ in pairs(table) do
+        if type(k) ~= 'number' or k < 1 or k > hash_size then
+            return false
+        end
+        n = n + 1
+    end
+    -- n <= hash_size by the pigeonhole principle
+    return n == hash_size
+end
+M.is_list = is_list
 
 
 return M

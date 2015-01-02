@@ -237,4 +237,17 @@ function testDefaultDictGivesSeparateInstances()
     assertEquals(d[2][1], 3)
 end
 
+function testIsList()
+    assertTrue(util.is_list({}))
+    assertTrue(util.is_list({'a'}))
+    assertTrue(util.is_list({'a', 'b', 42}))
+    assertFalse(util.is_list({a = 10}))
+    assertFalse(util.is_list({[1] = 'a', [3] = 'b'}))
+    assertFalse(util.is_list({[0] = 'a', [1] = 'b', [2] = 'c'}))
+    local t = {'a', 'b', 'c', 'd'}
+    assertTrue(util.is_list(t))
+    t[3] = nil
+    assertFalse(util.is_list(t))
+end
+
 LuaUnit:main()
