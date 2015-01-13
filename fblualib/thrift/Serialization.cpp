@@ -330,7 +330,11 @@ void Serializer::doSerializeFunction(LuaFunction& obj,
 int Deserializer::fromThrift(lua_State* L, LuaObject&& obj) {
   in_ = std::move(obj);
   doDeserializeRefs(L);
-  return doDeserialize(L, in_.value, 0);
+
+  auto retval = doDeserialize(L, in_.value, 0);
+  lua_remove(L, -2);
+  lua_remove(L, -2);
+  return retval;
 }
 
 void Deserializer::doDeserializeRefs(lua_State* L) {
