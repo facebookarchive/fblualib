@@ -70,8 +70,11 @@
 -- -- (vec[43] = 'foo')
 
 local ffi = require('ffi')
-local module_config = require('fb.ffivector._config')
-local lib = ffi.load(module_config.clib)
+local lib_path = package.searchpath('libffivector', package.cpath)
+if not lib_path then
+   lib_path = require('fb.ffivector._config').clib
+end
+local lib = ffi.load(lib_path)
 
 local M = {}
 
