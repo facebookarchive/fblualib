@@ -90,9 +90,9 @@ function Deque:_init(lst)
 end
 
 function Deque:_iter(idx)
-    if idx and idx >= self.first - 1 and idx < self.last then
+    if idx and idx >= 0 and idx < #self then
         idx = idx + 1
-        return idx, self.list[idx]
+        return idx, self.list[idx + self.first - 1]
     end
 end
 
@@ -103,7 +103,7 @@ end
 
 -- Iterator
 function Deque:__pairs()
-    return self.__ipairs()
+    return self:__ipairs()
 end
 
 -- Deque length

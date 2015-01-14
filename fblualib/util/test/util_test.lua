@@ -82,6 +82,7 @@ function testDequeSimple()
 
     assertEquals('a', deque[1])
     assertEquals('a', deque:get_stable(1))
+    assertEquals(pl.List({'a'}), pl.List(deque))
 end
 
 function testSetDefaultNoStore()
