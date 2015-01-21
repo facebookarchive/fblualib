@@ -35,6 +35,10 @@
 -- Filesystem utilities:
 -- * create_temp_dir, create a temporary directory
 --
+-- Module utilities:
+-- * relative_module, compute full module name based on relative name
+-- * relative_require, require module based on relative name
+--
 -- Clock utilities:
 -- * time(), return the time (as a floating-point number of seconds since
 --   epoch); just like os.time() but with microsecond precision.
@@ -601,5 +605,46 @@ local function is_list(table)
 end
 M.is_list = is_list
 
+
+-- Compute a module path from the current's module name (argument to the
+-- module, passed by require) and a given relative path. Useful to require
+-- other modules from the same directory (or children).
+--
+-- strip is the number of path components to remove from the end of
+-- the module name. The default (if unspecified) is 1, which will allow you
+-- to access other modules from the same directory. Subtract 1 from the
+-- desired value (so pass 0 to get modules from the same directory)
+-- if you're in the "main" module in a directory (init.lua), as the
+-- module name for foo/bar/init.lua is "foo.bar" not "foo.bar.init".
+--
+-- relative_module('foo.bar.baz', 'qux')  ==>  'foo.bar.qux'
+-- relative_module('foo.bar.baz', 'qux', 0)  ==>  'foo.bar.baz.qux'
+local function relative_module(name, rel_path, strip)
+    strip = strip or 1
+
+    local parts = pl.stringx.split(name, '.')
+    -- Just in case you got called as require('foo.bar.init') instead of
+    -- require('foo.bar'), remove the last component if it is 'init'.
+    if parts[#parts] == 'init' then
+        table.remove(parts)
+    end
+
+    if #parts > strip then
+        local prefix = table.concat(parts, '.', 1, #parts - strip)
+        return prefix .. '.' .. rel_path
+    else
+        return rel_path
+    end
+end
+M.relative_module = relative_module
+
+
+-- Helper function to require a module from the same directory (or children)
+-- Usage (at module level) (the current module name is passed as varargs):
+--   local bar = relative_require(..., 'foo')
+local function relative_require(name, rel_path, strip)
+    return require(relative_module(name, rel_path, strip))
+end
+M.relative_require = relative_require
 
 return M
