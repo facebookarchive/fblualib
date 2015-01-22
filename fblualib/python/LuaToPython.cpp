@@ -439,7 +439,7 @@ PyObjectHandle LuaToPythonConverter::convertTensor(lua_State* L,
   PyObjectHandle obj(PyArray_New(
       &PyArray_Type, ndims, dims.get(), numpyType,
       strides.get(), tensor.data(), 0,
-      0, nullptr));
+      NPY_ARRAY_ALIGNED, nullptr));
   checkPythonError(obj, L, "create numpy.ndarray of type {}", numpyType);
 
   // Create a PythonStorage object to hold the reference count.
