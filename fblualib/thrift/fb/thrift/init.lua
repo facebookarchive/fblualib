@@ -25,11 +25,12 @@ local FilePtr = ffi.typeof('struct { void* p; }')
 -- FFI converts from Lua file objects to FILE*, but that's not directly
 -- accessible from the standard Lua/C API. We'll encode the FILE* as a Lua
 -- string and decode it in libthrift.
-function M.encode_file(f)
+local function encode_file(f)
     assert(io.type(f) == 'file')
     local fp = FilePtr(f)
     return ffi.string(fp, ffi.sizeof(fp))
 end
+M.encode_file = encode_file
 
 -- Serialize to a Lua string
 -- str = to_string(obj)
@@ -37,7 +38,7 @@ M.to_string = lib.to_string
 
 -- Serialize to a Lua open file
 local function to_file(obj, f, codec)
-    return lib._to_file(obj, M.encode_file(f), codec)
+    return lib._to_file(obj, encode_file(f), codec)
 end
 M.to_file = to_file
 
@@ -47,7 +48,7 @@ M.from_string = lib.from_string
 
 -- Deserialize from a Lua open file; the file pointer is moved past the data.
 local function from_file(f, codec)
-    return lib._from_file(M.encode_file(f), codec)
+    return lib._from_file(encode_file(f), codec)
 end
 M.from_file = from_file
 
@@ -129,8 +130,29 @@ end
 
 -- Serialize torch object; use the type as the id. Do not serialize the
 -- metatable.
+--
+-- If the class has the specially-named methods _thrift_serialize and
+-- _thrift_deserialize, they will be called as follows:
+--
+-- At serialization time, before an object of that class is serialized,
+-- we call obj:_thrift_serialize(). This method must either return a table
+-- (that will be serialized *instead of* obj) or nil (which means we'll
+-- serialize obj; this gives you an opportunity to blow away temporary
+-- fields that shouldn't be serialized.)
+--
+-- At deserialization time, we call _thrift_deserialize(obj) which must
+-- mutate obj *in place*. obj is a table (not yet blessed as a Torch
+-- class), and _thrift_deserialize must set fields appropriately so that
+-- it can be blessed and produce a valid object.
+--
+-- If the class doesn't have these methods, all fields will be serialized.
 local function torch_serialize(obj)
-    return torch.typename(obj), obj, false
+    local sobj
+    if obj._thrift_serialize then
+        sobj = obj:_thrift_serialize()
+        assert(sobj == nil or type(sobj) == 'table')
+    end
+    return torch.typename(obj), sobj or obj, false
 end
 
 -- Deserialize torch object.
@@ -138,6 +160,9 @@ local function torch_deserialize(typename, obj)
     local metatable = torch.getmetatable(typename)
     if not metatable then
         error('Invalid torch typename ' .. typename)
+    end
+    if metatable._thrift_deserialize then
+        metatable._thrift_deserialize(obj)
     end
     setmetatable(obj, metatable)
 end
@@ -200,11 +225,17 @@ local function add_penlight_class(cls, name)
 end
 M.add_penlight_class = add_penlight_class
 
--- Register all Penlight classes in a table for serialization / deserialization
+-- Register all Penlight classes in a table for serialization / deserialization.
+-- The name is obtained by concatenating prefix to the table key.
 local function add_penlight_classes(tab, prefix)
+    if prefix then
+        prefix = prefix .. '.'
+    else
+        prefix = ''
+    end
     for k, v in pairs(tab) do
         if is_penlight_class(v) then
-            add_penlight_class(v, prefix .. '.' .. k)
+            add_penlight_class(v, prefix .. k)
         end
     end
 end

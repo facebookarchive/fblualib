@@ -338,6 +338,46 @@ function testTorchOOP()
     assertEquals(obj.s:totable(), converted.s:totable())
 end
 
+local ExplicitSerDe = torch.class('thrift_test.ExplicitSerDe')
+
+function ExplicitSerDe:__init(a, b, serialize_in_place)
+    self.a = a
+    self.b = b
+    self.serialize_in_place = serialize_in_place
+    self.state = 'initialized'
+end
+
+function ExplicitSerDe:_thrift_serialize()
+    if self.serialize_in_place then
+        self.state = nil
+        return nil
+    end
+    return {a=self.a, b=self.b}
+end
+
+function ExplicitSerDe:_thrift_deserialize()
+    assert(self.a and self.b)
+    assert(not self.state)
+    self.state = 'deserialized'
+end
+
+local function testSerDe(in_place)
+    local obj = thrift_test.ExplicitSerDe(5, 6, in_place)
+    assert(obj.state == 'initialized')
+    local converted = thrift.from_string(thrift.to_string(obj))
+    assert(converted.a == 5)
+    assert(converted.b == 6)
+    assert(converted.state == 'deserialized')
+end
+
+function testTorchOOPExplicitSerDeInPlace()
+    testSerDe(true)
+end
+
+function testTorchOOPExplicitSerDeOutOfPlace()
+    testSerDe(false)
+end
+
 function testBM()
     local t1 = {}
     for i = 1, 10000 do
