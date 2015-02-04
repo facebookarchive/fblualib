@@ -214,7 +214,7 @@ bool eventBaseRunInLoop(folly::EventBase* eb, void (*fn)(void)) {
 bool eventBaseRunAfterDelay(folly::EventBase* eb, int milliseconds,
                             void (*fn)(void)) {
   try {
-    return eb->runAfterDelay(fn, milliseconds);
+    return eb->tryRunAfterDelay(fn, milliseconds);
   } catch (const std::bad_alloc&) {
     return false;
   }
