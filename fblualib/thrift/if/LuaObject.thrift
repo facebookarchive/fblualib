@@ -71,12 +71,18 @@ struct LuaFunction {
   2: list<LuaPrimitiveObject> upvalues,
 }
 
+struct LuaExternalEnvLocation {
+  1: required LuaPrimitiveObject env,  // may not be reference
+  2: required LuaPrimitiveObject key,  // may not be reference
+}
+
 struct LuaRefObject {
   1: optional binary stringVal,
   2: optional LuaTable tableVal,
   3: optional LuaFunction functionVal,
   4: optional Tensor.ThriftTensor tensorVal,
   5: optional Tensor.ThriftStorage storageVal,
+  6: optional LuaExternalEnvLocation envLocation,
 }
 
 // A Lua object.
@@ -96,6 +102,7 @@ struct ThriftHeader {
   // 0 = initial version
   // 1 = support for metatables, specials
   // 2 = support for chunked encoding
+  // 3 = support for external environments
   1: i32 version,
   2: i32 codec,
   3: i64 uncompressedLength,

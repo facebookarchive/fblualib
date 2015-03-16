@@ -73,12 +73,12 @@ int serializeToString(lua_State* L) {
     (lua_type(L, 2) != LUA_TNIL && lua_type(L, 2) != LUA_TNONE ?
      static_cast<CodecType>(luaL_checkinteger(L, 2)) :
      CodecType::NO_COMPRESSION);
-  auto luaChunkSize = luaGetNumber<uint64_t>(L, 3);
+  auto luaChunkSize = luaGetNumber<uint64_t>(L, 4);
   uint64_t chunkSize =
     luaChunkSize ? *luaChunkSize : std::numeric_limits<uint64_t>::max();
 
   Serializer serializer;
-  auto obj = serializer.toThrift(L, 1);
+  auto obj = serializer.toThrift(L, 1, 3);
 
   StringWriter writer;
   encode(obj, codecType, getVersion(L), writer, kAnyVersion, chunkSize);
@@ -93,14 +93,14 @@ int serializeToFile(lua_State* L) {
     (lua_type(L, 3) != LUA_TNIL && lua_type(L, 3) != LUA_TNONE ?
      static_cast<CodecType>(luaL_checkinteger(L, 3)) :
      CodecType::NO_COMPRESSION);
-  auto luaChunkSize = luaGetNumber<uint64_t>(L, 4);
+  auto luaChunkSize = luaGetNumber<uint64_t>(L, 5);
   uint64_t chunkSize =
     luaChunkSize ? *luaChunkSize : std::numeric_limits<uint64_t>::max();
 
   auto fp = luaDecodeFILE(L, 2);
 
   Serializer serializer;
-  auto obj = serializer.toThrift(L, 1);
+  auto obj = serializer.toThrift(L, 1, 4);
 
   FILEWriter writer(fp);
   encode(obj, codecType, getVersion(L),  writer, kAnyVersion, chunkSize);
@@ -108,7 +108,7 @@ int serializeToFile(lua_State* L) {
   return 0;
 }
 
-int doDeserialize(lua_State* L, DecodedObject&& decodedObject) {
+int doDeserialize(lua_State* L, DecodedObject&& decodedObject, int envIdx) {
   auto version = getVersion(L);
 
   unsigned int options = 0;
@@ -119,19 +119,20 @@ int doDeserialize(lua_State* L, DecodedObject&& decodedObject) {
     options |= Deserializer::NO_BYTECODE;
   }
 
-  return Deserializer(options).fromThrift(L, std::move(decodedObject.output));
+  return Deserializer(options).fromThrift(L, std::move(decodedObject.output),
+                                          envIdx);
 }
 
 int deserializeFromString(lua_State* L) {
   folly::ByteRange br(luaGetStringChecked(L, 1));
   StringReader reader(&br);
-  return doDeserialize(L, decode(reader));
+  return doDeserialize(L, decode(reader), 2);
 }
 
 int deserializeFromFile(lua_State* L) {
   auto fp = luaDecodeFILE(L, 1);
   FILEReader reader(fp);
-  return doDeserialize(L, decode(reader));
+  return doDeserialize(L, decode(reader), 2);
 }
 
 int setCallbacks(lua_State* L) {
@@ -144,9 +145,9 @@ int setCallbacks(lua_State* L) {
 }
 
 const struct luaL_reg gFuncs[] = {
-  {"to_string", serializeToString},
+  {"_to_string", serializeToString},
   {"_to_file", serializeToFile},
-  {"from_string", deserializeFromString},
+  {"_from_string", deserializeFromString},
   {"_from_file", deserializeFromFile},
   {"_set_callbacks", setCallbacks},
   {nullptr, nullptr},  // sentinel

@@ -123,6 +123,40 @@ function testThriftSerializationFunction()
     assertEquals(42, f2(32))
 end
 
+function testThriftSerializationExternalEnv()
+    local t1 = {10}
+    local t2 = {20}
+    local t = {t1, t2}
+    local deserialized = thrift.from_string(thrift.to_string(t))
+    t1[1] = 1
+    t2[1] = 2
+    assertEquals(10, deserialized[1][1])
+    assertEquals(20, deserialized[2][1])
+
+    -- t1 is stored as an external reference, so changes to it are
+    -- reflected in the deserialized version
+    deserialized = thrift.from_string(thrift.to_string(
+        t, thrift.codec.NONE, {{t1}}), {{t1}})
+    t1[1] = 100
+    t2[1] = 200
+    assertEquals(100, deserialized[1][1])
+    assertEquals(2, deserialized[2][1])
+end
+
+function testThriftSerializationExternalEnvPackages()
+    local u = 'hello'
+    local function foo(x)
+        return thrift, pl.stringx.join(' ', {u, x})
+    end
+
+    local deserialized = thrift.from_string(
+        thrift.to_string(foo, thrift.codec.NONE, {package.loaded, {pl}}),
+        {package.loaded, {pl}})
+    local r_thrift, result = deserialized('world')
+    assertTrue(r_thrift == thrift)
+    assertEquals('hello world', result)
+end
+
 -- Generate a randomized object
 local function generate()
     -- One of the things we can generate is a reference to a previously-created
@@ -265,7 +299,7 @@ function testRandomizedChunked()
     for i = 1, 10 do
         local lua_obj = generate()
         local converted = thrift.from_string(thrift.to_string(
-            lua_obj, thrift.codec.NONE, 10))
+            lua_obj, thrift.codec.NONE, nil, 10))
         assertEquals(lua_obj, converted)
     end
 end

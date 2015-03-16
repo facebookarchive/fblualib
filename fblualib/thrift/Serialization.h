@@ -94,14 +94,16 @@ void setSpecialDeserializationCallback(lua_State* L, int index);
 // object or as raw encoded bytes (using CompactProtocol).
 class Serializer {
  public:
-  LuaObject toThrift(lua_State* L, int index);
+  LuaObject toThrift(lua_State* L, int index, int envIdx = 0);
 
  private:
-  void setMinVersion(int v);
-  void doSerialize(LuaPrimitiveObject& obj, lua_State* L, int index, int level);
+  void doSerialize(LuaPrimitiveObject& obj, lua_State* L, int index, int level,
+                   bool allowRefs=true);
   void doSerializeTable(LuaTable& obj, lua_State* L, int index, int level);
   void doSerializeFunction(LuaFunction& obj, lua_State* L, int index,
                            int level);
+
+  int invertedEnvIdx_;
 
   LuaObject out_;
   std::unordered_map<const void*, int64_t> converted_;
@@ -116,11 +118,12 @@ class Deserializer {
   };
   explicit Deserializer(unsigned int options=0) : options_(options) { }
 
-  int fromThrift(lua_State* L, LuaObject&& obj);
+  int fromThrift(lua_State* L, LuaObject&& obj, int envIdx = 0);
 
  private:
   void doDeserializeRefs(lua_State* L);
-  int doDeserialize(lua_State* L, LuaPrimitiveObject& obj, int level);
+  int doDeserialize(lua_State* L, LuaPrimitiveObject& obj, int level,
+                    bool allowRefs=true);
   void doDeserializeFunction(lua_State* L, LuaFunction& obj);
   void doSetTable(lua_State* L, int index, LuaTable& obj);
   void doSetUpvalues(lua_State* L, int index, LuaFunction& obj);
@@ -131,6 +134,7 @@ class Deserializer {
   // at convertedIdx_ on the Lua stack)
   LuaObject in_;
   int convertedIdx_ = 0;
+  int envIdx_ = 0;
 };
 
 }}  // namespaces

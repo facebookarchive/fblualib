@@ -12,6 +12,59 @@
 -- Supports all Lua types except coroutines (including functions, which are
 -- serialized as bytecode, together with their upvalues), as well as torch
 -- Tensor and Storage objects.
+--
+-- The core functions are to_file / to_string for serialization,
+-- from_file / from_string for deserialization.
+--
+-- local thrift = require('fb.thrift')
+--
+-- thrift.to_file(obj, file, [codec, [envs]])
+--   Serialize obj to an open Lua io file (opened with io.open, etc)
+--   - codec, if specified, indicates the compression method to use; the valid
+--     values are thrift.codec.NONE (no compression, default), LZ4, SNAPPY,
+--     ZLIB, LZMA2.
+--   - envs, if specified, is a table of environments -- that is, a table
+--     of tables. Values found in these tables are not serialized -- a name
+--     is serialized instead. The same envs must be given at deserialization
+--     time.
+--
+-- thrift.to_string(obj, [codec, [envs]])
+--   Return a Lua string with the serialized version of obj.
+--
+-- thrift.from_file(file, [envs])
+--   Deserialize an object from the file and return it, advancing the
+--   file pointer past the object.
+--
+-- thrift.from_string(str, [envs])
+--   Deserialize an object from the string and return it.
+--
+-- Torch and Penlight classes are handled specially (see below):
+-- - Torch classes only serialize data members, not methods. They serialize
+--   the (globally unique, as Torch requires) type name instead of the
+--   metatable.
+-- - Similarly, Penlight classes only serialize data members, not methods,
+--   if explicitly registered with add_penlight_class / add_penlight_classes.
+--   As Penlight class names are not globally unique, you must register
+--   the classes explicitly in order to ensure a unique name -> type mapping.
+--
+-- The "envs" feature deserves additional explanation. It is used to prevent
+-- certain objects from being serialized and deserialized, as long as you
+-- can guarantee that they will be available at deserialization time.
+--
+-- It may be used, for example, to avoid serializing modules (that are
+-- upvalues to serialized functions) or objects of types that can't be
+-- serialized (ffi cdata).
+--
+-- Example:
+-- thrift.to_file(obj, file, thrift.codec.NONE,
+--                {package.loaded, {pl, foo}})
+-- will not attempt to serialize loaded packages, or references to "pl" or
+-- "foo".
+--
+-- Note that envs is a table of tables to make it easy to concatenate
+-- existing tables (such as package.loaded, _G, etc).
+--
+-- The exact same "envs" must be given at deserialization time.
 
 local ffi = require('ffi')
 local lib = require('fb.thrift.lib')
@@ -32,23 +85,74 @@ local function encode_file(f)
 end
 M.encode_file = encode_file
 
+local function is_primitive(v)
+    local t = type(v)
+    return t == 'number' or t == 'string' or t == 'boolean'
+end
+
+-- Invert a table of tables; return a map from each value in an inner table
+-- to a one {outer_table_key, inner_table_key} pair that maps to that value.
+-- That is, for every v such that envs[k1][k2] exists and k1 and k2 are
+-- both primitive, set result[v] = {k1, k2} in the returned table. If there
+-- are more than one such {k1, k2} for the same value, only one is returned.
+local function invert_envs(envs)
+    if envs == nil then
+        return nil
+    end
+    local inverted = {}
+    for env, values in pairs(envs) do
+        if is_primitive(env) then
+            for k, v in pairs(values) do
+                if is_primitive(k) then
+                    if not inverted[v] then
+                        inverted[v] = {env, k}
+                    end
+                end
+            end
+        end
+    end
+    return inverted
+end
+M.invert_envs = invert_envs
+
+-- Similar to to_string (below), but you are responsible for calling
+-- invert_envs directly; this is useful if you want to cache the same
+-- envs across calls.
+local function to_string_inv(obj, codec, inverted_envs, chunk_size)
+    return lib._to_string(obj, codec, inverted_envs, chunk_size)
+end
+M.to_string_inv = to_string_inv
+
 -- Serialize to a Lua string
 -- str = to_string(obj)
-M.to_string = lib.to_string
+local function to_string(obj, codec, envs, chunk_size)
+    return to_string_inv(obj, codec, invert_envs(envs), chunk_size)
+end
+M.to_string = to_string
+
+-- Similar to to_file (below), but you are responsible for calling
+-- invert_envs directly; this is useful if you want to cache the same
+-- envs across calls.
+local function to_file_inv(obj, f, codec, inverted_envs, chunk_size)
+    return lib._to_file(obj, encode_file(f), codec, inverted_envs, chunk_size)
+end
+M.to_file_inv = to_file_inv
 
 -- Serialize to a Lua open file
-local function to_file(obj, f, codec)
-    return lib._to_file(obj, encode_file(f), codec)
+local function to_file(obj, f, codec, envs, chunk_size)
+    return to_file_inv(obj, f, codec, invert_envs(envs), chunk_size)
 end
 M.to_file = to_file
 
 -- Deserialize from a Lua string
--- obj = from_string(str)
-M.from_string = lib.from_string
+local function from_string(s, envs)
+    return lib._from_string(s, envs)
+end
+M.from_string = from_string
 
 -- Deserialize from a Lua open file; the file pointer is moved past the data.
-local function from_file(f, codec)
-    return lib._from_file(encode_file(f), codec)
+local function from_file(f, envs)
+    return lib._from_file(encode_file(f), envs)
 end
 M.from_file = from_file
 

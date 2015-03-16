@@ -35,11 +35,18 @@ void setSpecialDeserializationCallback(lua_State* L, int index) {
   lua_setfield(L, LUA_REGISTRYINDEX, kSpecialDeserializationCallbackKey);
 }
 
-LuaObject Serializer::toThrift(lua_State* L, int index) {
+LuaObject Serializer::toThrift(lua_State* L, int index, int invertedEnvIdx) {
+  if (invertedEnvIdx != 0 && lua_isnil(L, invertedEnvIdx)) {
+    invertedEnvIdx = 0;
+  }
+  invertedEnvIdx_ = invertedEnvIdx;
+
   doSerialize(out_.value, L, index, 0);
   converted_.clear();
   return std::move(out_);
 }
+
+#define XLOG DVLOG(XLOG_LEVEL) << "S: " << indent(level)
 
 namespace {
 
@@ -49,10 +56,8 @@ std::string indent(int level) {
 
 }  // namespace
 
-#define XLOG DVLOG(XLOG_LEVEL) << "S: " << indent(level)
-
 void Serializer::doSerialize(LuaPrimitiveObject& obj, lua_State* L, int index,
-                             int level) {
+                             int level, bool allowRefs) {
   if (index < 0) {
     index = lua_gettop(L) + index + 1;
   }
@@ -60,7 +65,8 @@ void Serializer::doSerialize(LuaPrimitiveObject& obj, lua_State* L, int index,
   LuaRefObject ref;
   int64_t refIdx = -1;
   // Check if we've encountered it before, record if not
-  if (auto luaPtr = lua_topointer(L, index)) {
+  const void* luaPtr = nullptr;
+  if (allowRefs && (luaPtr = lua_topointer(L, index)) != nullptr) {
     auto pos = converted_.find(luaPtr);
     if (pos != converted_.end()) {
       XLOG << "existing reference " << pos->second;
@@ -74,6 +80,35 @@ void Serializer::doSerialize(LuaPrimitiveObject& obj, lua_State* L, int index,
     obj.refVal = refIdx;
     out_.refs.emplace_back();
     XLOG << "new reference " << refIdx;
+
+    bool found = false;
+
+    if (invertedEnvIdx_ != 0) {
+      int top = lua_gettop(L);
+      lua_pushvalue(L, index);
+
+      lua_gettable(L, invertedEnvIdx_);
+      if (lua_type(L, -1) == LUA_TTABLE) {
+        found = true;
+        XLOG << "external env value";
+        ref.__isset.envLocation = true;
+        int keysIdx = lua_gettop(L);
+        DCHECK_EQ(lua_objlen(L, keysIdx), 2);
+        lua_rawgeti(L, keysIdx, 1);
+        doSerialize(ref.envLocation.env, L, -1, level + 1, false);
+        lua_rawgeti(L, keysIdx, 2);
+        doSerialize(ref.envLocation.key, L, -1, level + 1, false);
+      } else {
+        DCHECK_EQ(lua_type(L, -1), LUA_TNIL);
+      }
+
+      lua_settop(L, top);
+    }
+
+    if (found) {
+      out_.refs[refIdx] = std::move(ref);
+      return;
+    }
   }
 
   int type = lua_type(L, index);
@@ -110,12 +145,18 @@ void Serializer::doSerialize(LuaPrimitiveObject& obj, lua_State* L, int index,
     break;
   }
   case LUA_TTABLE:
+    if (!allowRefs) {
+      luaL_error(L, "references not allowed (table)");
+    }
     DCHECK_GE(refIdx, 0);
     ref.__isset.tableVal = true;
     XLOG << "table";
     doSerializeTable(ref.tableVal, L, index, level);
     break;
   case LUA_TUSERDATA:
+    if (!allowRefs) {
+      luaL_error(L, "references not allowed (userdata)");
+    }
     DCHECK_GE(refIdx, 0);
 #define SERIALIZE_TENSOR(TYPE) \
     { \
@@ -153,6 +194,9 @@ void Serializer::doSerialize(LuaPrimitiveObject& obj, lua_State* L, int index,
     luaL_error(L, "invalid userdata");
     break;
   case LUA_TFUNCTION:
+    if (!allowRefs) {
+      luaL_error(L, "references not allowed (function)");
+    }
     DCHECK_GE(refIdx, 0);
     ref.__isset.functionVal = true;
     XLOG << "function";
@@ -327,13 +371,20 @@ void Serializer::doSerializeFunction(LuaFunction& obj,
 
 #undef XLOG
 
-int Deserializer::fromThrift(lua_State* L, LuaObject&& obj) {
+int Deserializer::fromThrift(lua_State* L, LuaObject&& obj, int envIdx) {
+  int top = lua_gettop(L);
+
+  if (envIdx != 0 && lua_isnil(L, envIdx)) {
+    envIdx = 0;
+  }
+  envIdx_ = envIdx;
+
   in_ = std::move(obj);
   doDeserializeRefs(L);
 
   auto retval = doDeserialize(L, in_.value, 0);
-  lua_remove(L, -2);
-  lua_remove(L, -2);
+  lua_remove(L, convertedIdx_);
+  DCHECK_EQ(lua_gettop(L), top + retval);  // hygienic
   return retval;
 }
 
@@ -345,7 +396,6 @@ void Deserializer::doDeserializeRefs(lua_State* L) {
     auto& ref = in_.refs[i];
 
     auto record = [&] {
-      lua_pushvalue(L, -1);
       lua_rawseti(L, convertedIdx_, i + 1);  // 1-based
     };
 
@@ -398,6 +448,23 @@ void Deserializer::doDeserializeRefs(lua_State* L) {
         luaL_error(L, "invalid storage type");
       }
       record();
+    } else if (ref.__isset.envLocation) {
+      XLOG << "external env value";
+      if (envIdx_ == 0) {
+        luaL_error(L, "no external env");
+      }
+      doDeserialize(L, ref.envLocation.env, 1, false);
+      lua_gettable(L, envIdx_);
+      if (lua_isnil(L, -1)) {
+        luaL_error(L, "expected external env not found");
+      }
+      doDeserialize(L, ref.envLocation.key, 1, false);
+      lua_gettable(L, -2);
+      if (lua_isnil(L, -1)) {
+        luaL_error(L, "expected entry in external env not found");
+      }
+      lua_remove(L, -2);
+      record();
     } else {
       luaL_error(L, "Invalid reference");
     }
@@ -425,9 +492,9 @@ void Deserializer::doDeserializeRefs(lua_State* L) {
 #undef XLOG
 #define XLOG DVLOG(XLOG_LEVEL) << "D: " << indent(level)
 int Deserializer::doDeserialize(lua_State* L, LuaPrimitiveObject& obj,
-                                int level) {
+                                int level, bool allowRefs) {
   if (obj.__isset.refVal) {
-    if (obj.refVal < 0 || obj.refVal >= in_.refs.size()) {
+    if (!allowRefs || obj.refVal < 0 || obj.refVal >= in_.refs.size()) {
       luaL_error(L, "Invalid referernce id %d", int(obj.refVal));
     }
     XLOG << "reference " << obj.refVal;

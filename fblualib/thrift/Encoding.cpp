@@ -24,7 +24,7 @@ namespace fblualib { namespace thrift {
 namespace {
 
 constexpr uint32_t kMagic = 0x5441554c;  // "LUAT", little-endian
-constexpr int kMaxSupportedVersion = 2;
+constexpr int kMaxSupportedVersion = 3;
 
 FOLLY_PACK_PUSH
 struct Header {
@@ -52,24 +52,30 @@ void encode(const LuaObject& input, folly::io::CodecType codecType,
   }
 
   int version = 0;
+
   if (dataQueue.chainLength() > chunkLength) {
     needChunking = true;
     // Version 2: chunking
     version = 2;
-  } else {
-    // Version 1: specials, metatables
-    for (auto& ref : input.refs) {
-      if (ref.__isset.tableVal) {
-        auto& table = ref.tableVal;
-        if (table.__isset.specialKey ||
-            table.__isset.specialValue ||
-            table.__isset.metatable) {
-          version = 1;
-          break;
-        }
+  }
+
+  for (auto& ref : input.refs) {
+    if (ref.__isset.envLocation) {
+      // Version 3: external env / package references
+      version = 3;
+      break;
+    }
+    if (version < 1 && ref.__isset.tableVal) {
+      auto& table = ref.tableVal;
+      if (table.__isset.specialKey ||
+          table.__isset.specialValue ||
+          table.__isset.metatable) {
+        // Version 1: specials, metatables
+        version = 1;
       }
     }
   }
+
   DCHECK_LE(version, kMaxSupportedVersion);
 
   if (version > maxVersion) {
