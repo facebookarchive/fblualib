@@ -3,32 +3,6 @@ local _debugger  = require('fb.debugger')
 local Stats = require('fb.util.stats')
 
 
--- This is cut-and-pasta from the original lua-unit which we forked.
--- Task #5814467 is to move the new assert methods from the open-source
--- version into our replica.
-local function assertAlmostEquals(actual, expected, margin)
-  -- check that two floats are close by margin
-  if type(actual) ~= 'number'
-    or type(expected) ~= 'number'
-    or type(margin) ~= 'number' then
-    error('assertAlmostEquals: must supply only number arguments.' ..
-      '\nArguments supplied: ' .. actual .. ', ' .. expected ..
-      ', ' .. margin, 2)
-  end
-  if margin < 0 then
-    error('assertAlmostEquals: margin must be positive, current value is '
-      .. margin, 2)
-  end
-
-  -- help lua in limit cases like assertAlmostEquals( 1.1, 1.0, 0.1)
-  -- which by default does not work. We need to give margin a small boost
-  local realmargin = margin + 0.00000000001
-  if math.abs(expected - actual) > realmargin then
-    error( 'Values are not almost equal\nExpected: ' .. expected ..
-      ' with margin of ' .. margin .. ', received: ' .. actual, 2)
-  end
-end
-
 Test = {
   EPS = 0.0001
 }

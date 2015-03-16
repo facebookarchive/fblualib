@@ -104,6 +104,24 @@ function assertEquals(actual, expected)
     end
 end
 
+function assertAlmostEquals(actual, expected, margin)
+    -- check that two floats are close by margin
+   if type(actual) ~= 'number' or type(expected) ~= 'number'
+   or type(margin) ~= 'number' then
+      error('assertAlmostEquals: must supply only number arguments.\nArguments '
+               ..  'supplied: '..actual..', '..expected..', '..margin, 2)
+    end
+    if margin < 0 then
+       error('assertAlmostEquals: margin must be positive, current value is '
+                 .. margin, 2)
+    end
+
+    if math.abs(expected - actual) > margin then
+       error('Values are not almost equal\nExpected: ' .. expected ..
+                ' with margin of ' .. margin .. ', received: ' .. actual, 2)
+    end
+end
+
 function assertTrue(value)
     if not value then
         error("expected: true, actual: " .. mytostring(value), 2)
@@ -754,4 +772,3 @@ function LuaUnit:runSuite(...)
 end
 
 -- class LuaUnit
-
