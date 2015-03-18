@@ -26,22 +26,31 @@ void pushTensor(lua_State* L, const PyObjectHandle& oh) {
       &thpp::THAllocatorWrapper<NumpyArrayAllocator>::thAllocator,
       new NumpyArrayAllocator(oh));
 
-  auto ndims = PyArray_NDIM(arr);
-  thpp::LongStorage sizes(ndims, 0L);
-  for (size_t i = 0; i < ndims; ++i) {
-    sizes[i] = PyArray_DIM(arr, i);
-  }
+  // Numpy and Torch disagree on empty tensors. In Torch, an empty
+  // tensor is a tensor with zero dimensions. In Numpy, an empty tensor
+  // keeps its shape, but has 0 as the size of one of the dimensions.
+  // So we'll convert all Numpy tensors of 0 elements to empty Torch tensors.
+  // Also see LuaToPythonConverter::convertTensor in LuaToPython.cpp.
+  if (PyArray_SIZE(arr) != 0) {
+    auto ndims = PyArray_NDIM(arr);
+    thpp::LongStorage sizes(ndims, 0L);
+    for (size_t i = 0; i < ndims; ++i) {
+      sizes[i] = PyArray_DIM(arr, i);
+    }
 
-  thpp::LongStorage strides(ndims, 0L);
-  for (size_t i = 0; i < ndims; ++i) {
-    long s = PyArray_STRIDE(arr, i);
-    DCHECK_EQ(s % sizeof(T), 0);  // must be aligned
-    strides[i] = s / sizeof(T);   // numpy uses bytes, torch uses elements
-  }
+    thpp::LongStorage strides(ndims, 0L);
+    for (size_t i = 0; i < ndims; ++i) {
+      long s = PyArray_STRIDE(arr, i);
+      DCHECK_EQ(s % sizeof(T), 0);  // must be aligned
+      strides[i] = s / sizeof(T);   // numpy uses bytes, torch uses elements
+    }
 
-  thpp::Tensor<T> tensor(std::move(storage), 0, std::move(sizes),
-                         std::move(strides));
-  luaPushTensor(L, std::move(tensor));
+    thpp::Tensor<T> tensor(std::move(storage), 0, std::move(sizes),
+                           std::move(strides));
+    luaPushTensor(L, std::move(tensor));
+  } else {
+    luaPushTensor(L, thpp::Tensor<T>());
+  }
 }
 
 }  // namespace

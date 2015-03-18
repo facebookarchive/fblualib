@@ -93,6 +93,21 @@ local function assertTensorEquals(a, b)
     assertEquals(0, (a - b):sum())
 end
 
+function testEmptyTensor()
+    local a = torch.Tensor()
+    py.exec([=[
+import numpy as np
+b = np.empty(0)
+c = np.empty([2,1,0,3])
+]=])
+    local b = py.eval('b')
+    assertTrue(b:nElement() == 0)
+    assertTrue(py.eval('a.size == 0', {a=a}))
+
+    local c = py.eval('c')
+    assertTrue(c:nElement() == 0)
+end
+
 function testTensor()
     local a = torch.Tensor(10,10)
     for i = 1, 10 do

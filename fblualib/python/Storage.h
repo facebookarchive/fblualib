@@ -38,7 +38,11 @@ class PythonStorage {
   }
 
   ~PythonStorage() {
-    debugDeleteLuaRef(storage_.data());
+#ifndef NDEBUG
+    if (storage_.data()) {
+      debugDeleteLuaRef(storage_.data());
+    }
+#endif
   }
 
   // Define type for Python; for built-in types, this is called from
@@ -50,7 +54,11 @@ class PythonStorage {
   static PyBufferProcs pythonBufferProcs;
 
   explicit PythonStorage(thpp::Storage<T> s) : storage_(std::move(s)) {
-    debugAddLuaRef(storage_.data());
+#ifndef NDEBUG
+    if (storage_.data()) {
+      debugAddLuaRef(storage_.data());
+    }
+#endif
   }
 
   // Buffer interface

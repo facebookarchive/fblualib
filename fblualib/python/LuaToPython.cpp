@@ -415,29 +415,43 @@ template <class T>
 PyObjectHandle LuaToPythonConverter::convertTensor(lua_State* L,
                                                    thpp::Tensor<T>& tensor,
                                                    int numpyType) {
-  int ndims = tensor.ndims();
-  auto tsizes = tensor.sizes();
-  DCHECK_EQ(tsizes.size(), ndims);
-
-  std::unique_ptr<npy_intp[]> dims(new npy_intp[ndims]);
-  std::copy(tsizes.begin(), tsizes.end(), dims.get());
-
+  npy_intp zero = 0;
+  int ndims;
+  std::unique_ptr<npy_intp[]> dims;
+  npy_intp* dimsPtr;
   std::unique_ptr<npy_intp[]> strides;
 
-  if (!tensor.isContiguous()) {
-    auto tstrides = tensor.strides();
-    DCHECK_EQ(tstrides.size(), ndims);
+  // Numpy and Torch disagree on empty tensors. In Torch, an empty tensor
+  // is a tensor with zero dimensions. In Numpy, a tensor with zero dimensions
+  // is a scalar (with one element). So we'll convert an empty Torch tensor
+  // to a 1d Numpy tensor of shape [0]. Also see pushTensor in PythonToLua.cpp.
+  if (tensor.ndims() != 0) {
+    ndims = tensor.ndims();
+    auto tsizes = tensor.sizes();
+    DCHECK_EQ(tsizes.size(), ndims);
 
-    strides.reset(new npy_intp[ndims]);
+    dims.reset(new npy_intp[ndims]);
+    dimsPtr = dims.get();
+    std::copy(tsizes.begin(), tsizes.end(), dims.get());
 
-    // Numpy strides use bytes; Torch strides use element counts.
-    for (int i = 0; i < ndims; ++i) {
-      strides[i] = tstrides[i] * sizeof(T);
+    if (!tensor.isContiguous()) {
+      auto tstrides = tensor.strides();
+      DCHECK_EQ(tstrides.size(), ndims);
+
+      strides.reset(new npy_intp[ndims]);
+
+      // Numpy strides use bytes; Torch strides use element counts.
+      for (int i = 0; i < ndims; ++i) {
+        strides[i] = tstrides[i] * sizeof(T);
+      }
     }
+  } else {
+    ndims = 1;
+    dimsPtr = &zero;
   }
 
   PyObjectHandle obj(PyArray_New(
-      &PyArray_Type, ndims, dims.get(), numpyType,
+      &PyArray_Type, ndims, dimsPtr, numpyType,
       strides.get(), tensor.data(), 0,
       NPY_ARRAY_ALIGNED, nullptr));
   checkPythonError(obj, L, "create numpy.ndarray of type {}", numpyType);
