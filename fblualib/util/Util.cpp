@@ -16,11 +16,14 @@
 #include <folly/Portability.h>
 #include <folly/Random.h>
 #include <folly/String.h>
+#include <folly/ThreadLocal.h>
 #include <folly/io/async/EventBase.h>
 
 namespace {
 constexpr int64_t kNsPerUs = 1000;
 constexpr int64_t kUsPerS = 1000000;
+
+folly::ThreadLocal<std::string> errBuffer;
 
 int64_t getMicroseconds(clockid_t clock) noexcept {
   struct timespec ts;
@@ -162,7 +165,8 @@ const char* cEscape(const char* str, size_t len, std::string* out) {
     folly::cEscape(folly::StringPiece(str, len), *out);
     return nullptr;
   } catch (const std::exception& e) {
-    return e.what();
+    *errBuffer = e.what();
+    return errBuffer->data();
   }
 }
 
@@ -171,7 +175,8 @@ const char* cUnescape(const char* str, size_t len, std::string* out) {
     folly::cUnescape(folly::StringPiece(str, len), *out);
     return nullptr;
   } catch (const std::exception& e) {
-    return e.what();
+    *errBuffer = e.what();
+    return errBuffer->data();
   }
 }
 
