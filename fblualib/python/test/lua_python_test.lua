@@ -533,5 +533,32 @@ function testRandomized()
     py._check_no_refs()
 end
 
+function testThreads()
+    local threads = require('threads')
+    if not threads then
+        return  -- torch-threads module not found
+    end
+
+    local t = threads(
+        1,
+        function() g_py = require('fb.python') end,
+        function(idx)
+            g_py.exec('import numpy as np')
+            g_np = g_py.reval('np')
+        end)
+
+    -- This used to hang because of incorrect threads initialization
+    local msg
+    t:addjob(function() return tostring(g_np) end,
+             function(r) msg = r end)
+    t:synchronize()
+    assertTrue(string.match(msg, "^<module 'numpy'"))
+
+    t = nil
+    threads = nil
+    collectgarbage()
+    collectgarbage()
+end
+
 
 LuaUnit:main()

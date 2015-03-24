@@ -205,15 +205,25 @@ void reloadGlobal() {
   CHECK_EQ(dlclose(self), 0);  // release this new reference
 }
 
+struct PythonInitializer {
+  PythonInitializer();
+};
+
+PythonInitializer::PythonInitializer() {
+  if (!Py_IsInitialized()) {
+    Py_InitializeEx(0);  // no signal handlers
+    PyEval_InitThreads();
+    PyEval_ReleaseLock();
+  }
+}
+
 }  // namespace
 
 extern "C" int LUAOPEN(lua_State* L) {
   reloadGlobal();
   // If you want a custom Python initialization; call it before loading this
   // module.
-  if (!Py_IsInitialized()) {
-    Py_InitializeEx(0);  // no signal handlers
-  }
+  static PythonInitializer initializer;  // only once, thread-safe
 
   lua_newtable(L);
   luaL_register(L, nullptr, pythonFuncs);
