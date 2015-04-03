@@ -22,7 +22,7 @@ void pushTensor(lua_State* L, const PyObjectHandle& oh) {
   auto arr = reinterpret_cast<PyArrayObject*>(oh.get());
   auto storage = thpp::Storage<T>::wrapWithAllocator(
       folly::Range<T*>(static_cast<T*>(PyArray_DATA(arr)),
-                       PyArray_NBYTES(arr) * sizeof(T)),
+                       PyArray_NBYTES(arr) / sizeof(T)),
       &thpp::THAllocatorWrapper<NumpyArrayAllocator>::thAllocator,
       new NumpyArrayAllocator(oh));
 

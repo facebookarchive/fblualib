@@ -117,6 +117,7 @@ function testTensor()
     end
     assertEquals(10, a:stride(1))
     assertEquals(1, a:stride(2))
+    assertEquals(100, a:storage():size())
 
     py.exec([=[
 import numpy as np
@@ -135,6 +136,7 @@ for i in range(10):
     assertTensorEquals(a, py.eval('tt_a'))
     assertEquals(10, r:stride(1))
     assertEquals(1, r:stride(2))
+    assertEquals(100, r:storage():size())
 
     a = a:t()
     assertEquals(1, a:stride(1))
