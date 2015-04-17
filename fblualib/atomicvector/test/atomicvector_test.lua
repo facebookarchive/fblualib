@@ -204,6 +204,30 @@ function testGetError()
     assert(not rslt)
 end
 
+function testBadIndexError()
+    local name = 'foo'
+    local av = require('fb.atomicvector')
+    av.create_float(name)
+    local vec = av.get(name)
+    -- Read past end
+    local success, message = pcall(function()
+       print(vec[2])
+    end)
+    assert(not success)
+    print(message)
+
+    -- Write past end.
+    local success, message = pcall(function()
+       vec[2] = torch.Tensor({333}):float()
+    end)
+    assert(not success)
+    print(message)
+
+    vec = nil
+    collectgarbage()
+    av.destroy(name)
+end
+
 function testAppendError()
     local av = require('fb.atomicvector')
     local no_such_vec = nil

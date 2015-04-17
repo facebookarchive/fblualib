@@ -102,15 +102,24 @@ class TorchAtomicVector : public TorchAtomicVectorIf {
 
   virtual int luaRead(lua_State* L) {
     int idx = luaL_checknumber(L, 2);
-    auto val = m_av.read(idx - 1);
-    luaT_pushudata(L, val, kTensorTypeName);
+    try {
+      auto val = m_av.read(idx - 1);
+      luaT_pushudata(L, val, kTensorTypeName);
+    } catch (std::runtime_error &err) {
+      luaL_error(L, "atomic vector error: %s %d", err.what(),
+                 idx);
+    }
     return 1;
   }
 
   virtual int luaWrite(lua_State* L) {
     int idx = luaL_checknumber(L, 2);
     auto val = checkTensor(L, 3);
-    m_av.write(idx - 1, val);
+    try {
+      m_av.write(idx - 1, val);
+    } catch (std::runtime_error &err) {
+       luaL_error(L, "bad atomic vector index: %s %d", err.what(), idx);
+    }
     return 0;
   }
 

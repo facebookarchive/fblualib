@@ -22,7 +22,8 @@ namespace {
 template<typename Key, typename Val>
 class CrossThreadRegistry {
   std::mutex m_mutex;
-  std::unordered_map<Key, std::unique_ptr<Val>> m_registry;
+  typedef std::unordered_map<Key, std::unique_ptr<Val>> Registry;
+  Registry  m_registry;
 
 public:
   template<typename Lambda>
