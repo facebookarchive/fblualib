@@ -266,4 +266,46 @@ function testRelativeModule()
     assertEquals('foo.baz', rel('foo', 'baz', 0))
 end
 
+function testPcallOnce()
+    local key = 'fb.util.test.once1'
+    local once = util.get_once(key)
+
+    local ok, result = util.pcall_once(once, error, 'hello')
+    assertFalse(ok)
+    assertTrue(string.match(result, 'hello'))
+
+    ok, result = util.pcall_once(once, function() return 'foo' end)
+    assertTrue(ok)
+    assertEquals('foo', result)
+
+    ok, result = util.pcall_once(once, function() return 'foo' end)
+    assertTrue(ok == util.ALREADY_CALLED)
+    assertEquals(nil, result)
+end
+
+-- Not actually testing mutual exclusion; testing single-threaded behavior
+-- only (and that the lock gets released on error)
+function testPcallLocked()
+    local key = 'fb.util.test.pcall_locked1'
+    local mutex = util.get_mutex(key)
+
+    local ok, result = util.pcall_locked(
+        mutex,
+        function(x) return x + 10 end,
+        42)
+    assertTrue(ok)
+    assertEquals(52, result)
+
+    ok, result = util.pcall_locked(mutex, error, 'hello')
+    assertFalse(ok)
+    assertTrue(string.match(result, 'hello'))
+
+    ok, result = util.pcall_locked(
+        mutex,
+        function(x) return x + 10 end,
+        42)
+    assertTrue(ok)
+    assertEquals(52, result)
+end
+
 LuaUnit:main()

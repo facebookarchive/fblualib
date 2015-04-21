@@ -12,12 +12,16 @@
 // (Hello, OSX)
 #include <cerrno>
 #include <ctime>
+#include <mutex>
+#include <unordered_set>
 #include <glog/logging.h>
+#include <folly/Memory.h>
 #include <folly/Portability.h>
 #include <folly/Random.h>
 #include <folly/String.h>
 #include <folly/ThreadLocal.h>
 #include <folly/io/async/EventBase.h>
+#include <fblualib/CrossThreadRegistry.h>
 
 namespace {
 constexpr int64_t kNsPerUs = 1000;
@@ -223,6 +227,60 @@ bool eventBaseRunAfterDelay(folly::EventBase* eb, int milliseconds,
   } catch (const std::bad_alloc&) {
     return false;
   }
+}
+
+namespace {
+struct OnceRecord {
+  OnceRecord() : called(false) { }
+  std::mutex mutex;
+  bool called;
+};
+
+CrossThreadRegistry<std::string, OnceRecord> gOnceRegistry;
+CrossThreadRegistry<std::string, std::mutex> gMutexRegistry;
+}  // namespace
+
+OnceRecord* getOnce(const char* key) {
+  try {
+    return gOnceRegistry.getOrCreate(
+        key,
+        [] { return folly::make_unique<OnceRecord>(); });
+  } catch (const std::bad_alloc&) {
+    return nullptr;
+  }
+}
+
+bool lockOnce(OnceRecord* r) {
+  r->mutex.lock();
+  if (r->called) {
+    r->mutex.unlock();
+    return false;
+  }
+  return true;
+}
+
+void unlockOnce(OnceRecord* r, bool success) {
+  assert(!r->called);
+  r->called = success;
+  r->mutex.unlock();
+}
+
+std::mutex* getMutex(const char* key) {
+  try {
+    return gMutexRegistry.getOrCreate(
+        key,
+        [] { return folly::make_unique<std::mutex>(); });
+  } catch (const std::bad_alloc&) {
+    return nullptr;
+  }
+}
+
+void lockMutex(std::mutex* mutex) {
+  mutex->lock();
+}
+
+void unlockMutex(std::mutex* mutex) {
+  mutex->unlock();
 }
 
 }  // extern "C"
