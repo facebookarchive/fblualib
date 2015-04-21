@@ -105,7 +105,6 @@ local function buildHugeVector(name, numTensors, numThreads)
 
     local workers = threads(numThreads,
         function(threadidx)
-            sdl = require 'sdl2'
         end,
         function(threadidx)
             -- Capture stuff we need in the thread body. This is bizarre;
@@ -261,7 +260,6 @@ function testParallelAppend()
 
     local workers = threads(numThreads,
         function(threadidx)
-            sdl = require 'sdl2'
         end,
         function(threadidx)
             -- Capture stuff we need in the thread body. This is bizarre;
