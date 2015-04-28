@@ -67,13 +67,27 @@ function testTrace()
         end,
         30)
 
+    local function strip_function_key(t)
+        local ret = {}
+        for k, v in pairs(t) do
+            if k ~= 'func' then
+                if type(v) == 'table' then
+                    ret[k] = strip_function_key(v)
+                else
+                    ret[k] = v
+                end
+            end
+        end
+        return ret
+    end
+
     assertEquals({
         {'foo:bar:x:entry', {args = {30}}, 1},
         {'foo:bar:y:entry', {args = {10, 20}}, 2},
         {'foo:bar:y:inside', {hello = 1}, 2},
         {'foo:bar:y:return', {ret = {}}, 2},
         {'foo:bar:x:return', {ret = {1, 2}}, 1},
-    }, log)
+    }, strip_function_key(log))
 
     timing.finish()
 end

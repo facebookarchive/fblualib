@@ -238,7 +238,7 @@ d = {'a': 'foo', 'b': 'bar'}
     local get_args = py.reval('get_args')
     local l = py.reval('l')
     local d = py.reval('d')
-    assertEquals({[0]=1, [1]=2, [2]=3, [3]=4, a=foo, b=bar},
+    assertEquals({[0]=1, [1]=2, [2]=3, [3]=4, a="foo", b="bar"},
                  py.eval(get_args(1, 2, py.args, l, py.kwargs, d)))
 end
 
