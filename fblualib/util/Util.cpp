@@ -23,6 +23,14 @@
 #include <folly/io/async/EventBase.h>
 #include <fblualib/CrossThreadRegistry.h>
 
+// We may be running in a program that embeds google-glog, or we may not.
+// If we don't, we still need to call InitGoogleLogging(), but
+// InitGoogleLogging() abort()s if called twice. So we'll have to call
+// this internal function to check.
+namespace google { namespace glog_internal_namespace_ {
+bool IsGoogleLoggingInitialized();
+}}  // namespaces
+
 namespace {
 constexpr int64_t kNsPerUs = 1000;
 constexpr int64_t kUsPerS = 1000000;
@@ -281,6 +289,39 @@ void lockMutex(std::mutex* mutex) {
 
 void unlockMutex(std::mutex* mutex) {
   mutex->unlock();
+}
+
+namespace {
+// Must match order and count in logging.lua
+const int gSeverities[] = {
+  google::GLOG_INFO,
+  google::GLOG_WARNING,
+  google::GLOG_ERROR,
+  google::GLOG_FATAL,
+};
+constexpr int gNumSeverities = sizeof(gSeverities) / sizeof(gSeverities[0]);
+}  // namespace
+
+void luaLog(int severity, const char* file, int line, const char* msg) {
+  if (severity < 0) {
+    severity = 0;
+  } else if (severity >= gNumSeverities) {
+    severity = gNumSeverities - 1;
+  }
+  google::LogMessage(file, line, gSeverities[severity]).stream() << msg;
+}
+
+namespace {
+
+std::mutex gLoggingInitMutex;
+
+}  // namespace
+
+void luaInitLogging(const char* argv0) {
+  std::lock_guard<std::mutex> lock(gLoggingInitMutex);
+  if (!google::glog_internal_namespace_::IsGoogleLoggingInitialized()) {
+    google::InitGoogleLogging(argv0 ? argv0 : "");
+  }
 }
 
 }  // extern "C"
