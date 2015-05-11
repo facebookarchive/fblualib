@@ -162,4 +162,127 @@ void luaPushStorage(lua_State* L, thpp::Storage<T> storage) {
   luaT_pushudata(L, storage.moveAsTH(), thpp::Storage<T>::kLuaTypeName);
 }
 
+namespace detail {
+
+template <class T, class Enable=void> struct LuaOp;
+
+template <class T, class Derived> struct LuaOpBase {
+  inline static T getChecked(lua_State* L, int index) {
+    auto opt = Derived::get(L, index);
+    if (!opt) {
+      throw std::invalid_argument("Invalid object");
+    }
+    return std::move(*opt);
+  }
+};
+
+template <>
+struct LuaOp<bool> {
+  inline static void push(lua_State* L, bool value) {
+    lua_pushboolean(L, value);
+  }
+  inline static bool getChecked(lua_State* L, int index) {
+    return lua_toboolean(L, index);
+  }
+  inline static folly::Optional<bool> get(lua_State* L, int index) {
+    return getChecked(L, index);
+  }
+};
+
+template <class T>
+struct LuaOp<
+  T,
+  typename std::enable_if<
+    (std::is_integral<T>::value && !std::is_same<T, bool>::value)
+  >::type> : public LuaOpBase<T, LuaOp<T>> {
+  inline static void push(lua_State* L, T value) {
+    // convert at runtime, throw if value overflows
+    lua_pushinteger(L, folly::to<lua_Integer>(value));
+  }
+  inline static folly::Optional<T> get(lua_State* L, int index) {
+    if (lua_type(L, index) != LUA_TNUMBER) return folly::none;
+    return folly::to<T>(lua_tointeger(L, index));
+  }
+};
+
+template <class T>
+struct LuaOp<
+  T,
+  typename std::enable_if<
+    std::is_same<T, float>::value ||
+    std::is_same<T, double>::value>::type>
+  : public LuaOpBase<T, LuaOp<T>> {
+  inline static void push(lua_State* L, T value) {
+    lua_pushnumber(L, value);
+  }
+  inline static folly::Optional<T> get(lua_State* L, int index) {
+    if (lua_type(L, index) != LUA_TNUMBER) return folly::none;
+    return folly::to<T>(lua_tonumber(L, index));
+  }
+};
+
+template <class T>
+struct LuaOp<
+  T,
+  typename std::enable_if<folly::IsSomeString<T>::value>::type>
+  : public LuaOpBase<T, LuaOp<T>> {
+  inline static void push(lua_State* L, const T& value) {
+    lua_pushlstring(L, value.data(), value.size());
+  }
+  inline static folly::Optional<T> get(lua_State* L, int index) {
+    if (lua_type(L, index) != LUA_TSTRING) return folly::none;
+    size_t len;
+    auto s = lua_tolstring(L, index, &len);
+    return T(s, len);
+  }
+};
+
+template <>
+struct LuaOp<const char*> : public LuaOpBase<const char*, LuaOp<const char*>> {
+  inline static void push(lua_State* L, const char* value) {
+    lua_pushstring(L, value);
+  }
+  inline static folly::Optional<const char*> get(lua_State* L, int index) {
+    if (lua_type(L, index) != LUA_TSTRING) return folly::none;
+    return lua_tostring(L, index);
+  }
+};
+
+template <class T>
+struct LuaOp<
+  T,
+  typename std::enable_if<
+    (thpp::IsTensor<T>::value || thpp::IsStorage<T>::value)>::type>
+  : public LuaOpBase<T, LuaOp<T>> {
+  inline static void push(lua_State* L, T value) {
+    luaT_pushudata(L, value.moveAsTH(), T::kLuaTypeName);
+  }
+  inline static folly::Optional<T> get(lua_State* L, int index) {
+    auto p = static_cast<typename T::THType*>(
+        luaT_toudata(L, index, T::kLuaTypeName));
+    folly::Optional<T> opt;
+    if (p) {
+      opt = T(p);
+    }
+    return opt;
+  }
+};
+
+}  // namespace detail
+
+template <class T>
+inline void luaPush(lua_State* L, T&& obj) {
+  detail::LuaOp<typename std::decay<T>::type>::push(L, obj);
+}
+
+template <class T>
+inline folly::Optional<T> luaGet(lua_State* L, int index) {
+  return detail::LuaOp<T>::get(L, index);
+}
+
+template <class T>
+inline T luaGetChecked(lua_State* L, int index) {
+  return detail::LuaOp<T>::getChecked(L, index);
+}
+
 }  // namespaces

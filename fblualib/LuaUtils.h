@@ -111,6 +111,25 @@ thpp::Storage<NT> luaGetFieldIfStorageChecked(
 template <class NT>
 void luaPushStorage(lua_State* L, thpp::Storage<NT> storage);
 
+// TODO(tudorb): Deprecate the luaPush* interface, use the templated one
+// below.
+
+// Get an arbitrary object from the stack.
+// We support non-strict mode for booleans (nil and false are false-y,
+// everything else is true-y) and strict mode for numbers and strings
+// (no automatic conversion between numbers and strings).
+template <class T>
+folly::Optional<T> luaGet(lua_State* L, int index);
+
+template <class T>
+T luaGetChecked(lua_State* L, int index);
+
+// Push an arbitrary object onto the stack.
+// Specialized for integers, floating point numbers, const char*, string-y
+// strings (std::string, fbstring, StringPiece), thpp::Tensor, thpp::Storage
+template <class T>
+void luaPush(lua_State* L, T&& obj);
+
 // Return the length of a list-like table at the given stack index.
 // Different from lua_objlen in that it guarantees that it will return the
 // smallest N for which all indexes i, 1 <= i <= N, exist in the table,
@@ -121,6 +140,44 @@ size_t luaListSizeChecked(lua_State* L, int ud);
 
 // Get a FILE* encoded as a Lua string.
 FILE* luaDecodeFILE(lua_State* L, int index);
+
+// Ensure the Lua stack index is real (positive)
+inline int luaRealIndex(lua_State* L, int index) {
+  int r = index < 0 ? lua_gettop(L) + index + 1 : index;
+  DCHECK(r > 0 && r <= lua_gettop(L)) << r;
+  return r;
+}
+
+// Helper functions to store and load C pointers (lightuserdata) in the
+// Lua registry. The key must be the address of a static variable in your
+// code, or some other address-space-unique key.
+void storePointerInRegistry(lua_State* L, const void* key, void* value);
+void* loadPointerFromRegistry(lua_State* L, const void* key);
+
+namespace detail {
+struct LuaStateDeleter {
+  void operator()(lua_State* L) const {
+    if (L) {
+      lua_close(L);
+    }
+  }
+};
+}  // namespace
+
+// RAII wrapper around a lua_State
+typedef std::unique_ptr<lua_State, detail::LuaStateDeleter> LuaStatePtr;
+inline LuaStatePtr luaNewState() {
+  return LuaStatePtr(luaL_newstate());
+}
+
+// If embedding Lua within your program, call initLuaEmbedding() from main().
+// This is useful to make your program work both in the outside world (where
+// initLuaEmbedding is a no-op) and at Facebook.
+#ifdef FB_EMBED_LUA
+void initLuaEmbedding();
+#else
+inline void initLuaEmbedding() { }
+#endif
 
 }  // namespaces
 

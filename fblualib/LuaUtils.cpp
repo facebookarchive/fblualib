@@ -133,5 +133,27 @@ FILE* luaDecodeFILE(lua_State* L, int index) {
   return fp;
 }
 
+void storePointerInRegistry(lua_State* L, const void* key, void* value) {
+  lua_pushlightuserdata(L, const_cast<void*>(key));
+  if (value) {
+    lua_pushlightuserdata(L, value);
+  } else {
+    lua_pushnil(L);
+  }
+  lua_settable(L, LUA_REGISTRYINDEX);
+}
+
+void* loadPointerFromRegistry(lua_State* L, const void* key) {
+  lua_pushlightuserdata(L, const_cast<void*>(key));
+  lua_gettable(L, LUA_REGISTRYINDEX);
+  void* value = nullptr;
+  if (!lua_isnil(L, -1)) {
+    DCHECK_EQ(lua_type(L, -1), LUA_TLIGHTUSERDATA);
+    value = const_cast<void*>(lua_touserdata(L, -1));
+  }
+  lua_pop(L, 1);
+  return value;
+}
+
 }  // namespaces
 
