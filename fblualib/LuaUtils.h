@@ -170,6 +170,33 @@ inline LuaStatePtr luaNewState() {
   return LuaStatePtr(luaL_newstate());
 }
 
+// LuaStackGuard is a RAII guard to restore the stack to its initial
+// condition.
+class LuaStackGuard : private boost::noncopyable {
+ public:
+  explicit LuaStackGuard(lua_State* L) : L_(L), top_(lua_gettop(L_)) { }
+
+  ~LuaStackGuard() {
+    if (L_) {
+      restore();
+    }
+  }
+
+  void dismiss() {
+    L_ = nullptr;
+  }
+
+  void restore() {
+    DCHECK(L_);
+    DCHECK_GE(lua_gettop(L_), top_);
+    lua_settop(L_, top_);
+  }
+
+ private:
+  lua_State* L_;
+  int top_;
+};
+
 // If embedding Lua within your program, call initLuaEmbedding() from main().
 // This is useful to make your program work both in the outside world (where
 // initLuaEmbedding is a no-op) and at Facebook.

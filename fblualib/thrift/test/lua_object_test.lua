@@ -68,4 +68,15 @@ function testLuaObject()
     check_tensor(t)
 end
 
+function testUserData()
+    local t = {}
+    table.insert(t, lib.new_userdata(42))
+    table.insert(t, lib.new_userdata(10))
+
+    local t1 = thrift.from_string(thrift.to_string(t))
+
+    assertEquals(42, lib.get_userdata(t1[1]))
+    assertEquals(10, lib.get_userdata(t1[2]))
+end
+
 LuaUnit:main()

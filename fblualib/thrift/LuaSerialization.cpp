@@ -77,8 +77,7 @@ int serializeToString(lua_State* L) {
   uint64_t chunkSize =
     luaChunkSize ? *luaChunkSize : std::numeric_limits<uint64_t>::max();
 
-  Serializer serializer;
-  auto obj = serializer.toThrift(L, 1, 3);
+  auto obj = Serializer::toThrift(L, 1, 3);
 
   StringWriter writer;
   encode(obj, codecType, getVersion(L), writer, kAnyVersion, chunkSize);
@@ -99,8 +98,7 @@ int serializeToFile(lua_State* L) {
 
   auto fp = luaDecodeFILE(L, 2);
 
-  Serializer serializer;
-  auto obj = serializer.toThrift(L, 1, 4);
+  auto obj = Serializer::toThrift(L, 1, 4);
 
   FILEWriter writer(fp);
   encode(obj, codecType, getVersion(L),  writer, kAnyVersion, chunkSize);
@@ -119,8 +117,8 @@ int doDeserialize(lua_State* L, DecodedObject&& decodedObject, int envIdx) {
     options |= Deserializer::NO_BYTECODE;
   }
 
-  return Deserializer(options).fromThrift(L, std::move(decodedObject.output),
-                                          envIdx);
+  return Deserializer::fromThrift(L, std::move(decodedObject.output),
+                                  options, envIdx);
 }
 
 int deserializeFromString(lua_State* L) {

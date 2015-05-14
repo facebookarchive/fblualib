@@ -5,6 +5,7 @@
 
 #include <fblualib/LuaUtils.h>
 #include <fblualib/thrift/LuaObject.h>
+#include <fblualib/thrift/Serialization.h>
 
 using namespace fblualib;
 using namespace fblualib::thrift;
@@ -75,17 +76,64 @@ int readTensor(lua_State* L) {
   return 1;
 }
 
+const char* kMetatableKey = "thrift.test.metatable";
+
+int doPushUserData(lua_State* L, int val) {
+  auto ptr = lua_newuserdata(L, sizeof(val));
+  luaL_getmetatable(L, kMetatableKey);
+  lua_setmetatable(L, -2);
+  memcpy(ptr, &val, sizeof(val));
+  return 1;
+}
+
+int newUserData(lua_State* L) {
+  int val = luaL_checkint(L, 1);
+  return doPushUserData(L, val);
+}
+
+int getUserData(lua_State* L) {
+  luaL_checkudata(L, 1, kMetatableKey);
+  auto ptr = reinterpret_cast<const int*>(lua_topointer(L, 1));
+  lua_pushinteger(L, *ptr);
+  return 1;
+}
+
+folly::IOBuf wrap(const char* ptr) {
+  return folly::IOBuf(folly::IOBuf::WRAP_BUFFER, ptr, strlen(ptr));
+}
+
+folly::IOBuf customDataSerializer(lua_State* L, int objIndex) {
+  auto ptr = lua_topointer(L, objIndex);
+  luaL_getmetatable(L, kMetatableKey);
+  lua_getmetatable(L, objIndex);
+  CHECK(lua_rawequal(L, -1, -2));
+  lua_pop(L, 2);
+  return folly::IOBuf(folly::IOBuf::COPY_BUFFER, ptr, sizeof(int));
+}
+
+void customDataDeserializer(lua_State* L, const folly::IOBuf& buf) {
+  folly::io::Cursor cursor(&buf);
+  doPushUserData(L, cursor.read<int>());
+}
+
 const struct luaL_reg gFuncs[] = {
+  // write_ functions return a string representing the Thrift-encoded argument
   {"write_nil", writeNil},
   {"write_bool", writeBool},
   {"write_double", writeDouble},
   {"write_string", writeString},
   {"write_tensor", writeTensor},
+  // read_ functions read a string representing a Thrift-encoded value,
+  // decode it, check that the type matches, and return the decoded value
   {"read_nil", readNil},
   {"read_bool", readBool},
   {"read_double", readDouble},
   {"read_string", readString},
   {"read_tensor", readTensor},
+  // Create a new userdata object that encapsulates an int
+  {"new_userdata", newUserData},
+  // Get the encapsulated int from the given userdata object, checking the type
+  {"get_userdata", getUserData},
   {nullptr, nullptr},  // sentinel
 };
 
@@ -94,5 +142,13 @@ const struct luaL_reg gFuncs[] = {
 extern "C" int LUAOPEN(lua_State* L) {
   lua_newtable(L);
   luaL_register(L, nullptr, gFuncs);
+  luaL_newmetatable(L, kMetatableKey);
+  registerUserDataCallbacks(
+      L,
+      "thrift.test",
+      -1,
+      customDataSerializer,
+      customDataDeserializer);
+  lua_pop(L, 1);
   return 1;
 }

@@ -16,6 +16,7 @@
 
 #include <lua.hpp>
 
+#include <folly/Optional.h>
 #include <folly/io/IOBuf.h>
 #include <fblualib/thrift/if/gen-cpp2/LuaObject_types.h>
 
@@ -90,51 +91,173 @@ void setSpecialSerializationCallback(lua_State* L, int index);
 // end
 void setSpecialDeserializationCallback(lua_State* L, int index);
 
-// Serialize a Lua object to thrift, returning the result either as a Thrift
-// object or as raw encoded bytes (using CompactProtocol).
+// You may register callbacks to serialize custom full userdata types.
+//
+// The serialization callback is called with the stack index of the (full
+// userdata) object to be serialized. You must return the serialized form.
+//
+// The deserialization callback is called with the serialized form. You must
+// push the original object on the stack. We throw an error if the
+// deserialized object has a different metatable than the one given at
+// registration time.
+//
+// The callbacks are registered using registerUserDataCallbacks.  The
+// callbacks are registered under a (unique) key; at deserialization time, you
+// must register the same callbacks under the same keys.
+typedef folly::IOBuf (*UserDataSerializer)(lua_State* L, int objIndex);
+
+typedef void (*UserDataDeserializer)(
+    lua_State* L,
+    const folly::IOBuf& buf);
+
+// Register serialization / deserialization callbacks for userdata objects
+// whose metatable is at mtIndex. "key" must be unique among all custom
+// userdata objects.
+void registerUserDataCallbacks(
+    lua_State* L,
+    folly::StringPiece key,
+    int mtIndex,
+    UserDataSerializer serializer,
+    UserDataDeserializer deserializer);
+
+// Unregister any serialization / deserialization callbacks registered
+// under the given key.
+void unregisterUserDataCallbacks(lua_State* L, folly::StringPiece key);
+
+// Serialization:
+//
+// In the common case of serializing only one object, use Serializer::toThrift.
+//
+// A serializer may serialize multiple objects to Thrift. Objects serialized
+// during the same iteration (before a call to finish()) will be de-duplicated
+// and serialized only once.
+//
+// Usage:
+// - create the Serializer object
+// - set the inverted environment, if desired. This allows serializing
+//   unique names instead of specific objects; see below.
+// - serialize one or more objects using serialize()
+// - call finish() and retrieve the list of deduplicated references and
+//   release resources, after which the serializer may be used again.
+//
+// Both the LuaPrimitiveObjects returned by serialize() and the list of
+// LuaRefObjects returned by finish() must be sent to the receiving side.
+//
+// Inverted environment: some objects that are reachable by traversing
+// the dependency graph (as members of tables, or upvalues of functions)
+// can't / shouldn't be serialized, but you can assume that they're available
+// at the other end. (For example, you shouldn't try to serialize modules
+// or C functions.)
+//
+// In this case, you may memoize these objects into the "inverted environment":
+// a map from these objects to their unique names. The unique names are
+// tuples of two primitive values (usually numbers or strings).
+//
+// Passing inverted_env as {[foo] = {1, 'foo'}, [bar] = {2, 'bar'}} will not
+// serialize objects foo and bar if encountered, but will replace them
+// by their names {1, 'foo'} and {2, 'bar'}. At deserialization time, the same
+// environment must be present, and the deserialization code will replace them
+// with references to foo and bar on the receiving side.
+//
+// Normally, inverted_env is created from a list of name -> object tables;
+// for example, to avoid serializing all loaded modules, pass package.loaded
+// as one of the lists. The helper Lua function invert_env (in
+// fb/thrift/init.lua) converts from a table of tables to the inverted_env
+// format. (This is why the unique names are tuples; they're pairs of
+// outer_table_key (usually a number), inner_table_key (number or string)).
+//
+// Example:
+//
+// Assuming that you have modules 'io' and 'ffi' loaded, and you also
+// have a bunch of other objects that you don't want to serialize:
+//
+// local buf = ffi.new('char [?]', 100)
+//
+// envs = thrift.invert_envs(package.loaded, {buf})
+//
+// will produce a map of the form
+// {
+//   [io] = {1, 'io'},  -- key 'io' in first table
+//   [ffi] = {1, 'ffi'},
+//   [buf] = {2, 1},    -- key 1 in second table
+// }
+//
+// Note that the deserializer takes the non-inverted environment: a table
+// of tables. {package.loaded, {buf}} in our example.
 class Serializer {
  public:
-  LuaObject toThrift(lua_State* L, int index, int envIdx = 0);
+  explicit Serializer(lua_State* L);
+  ~Serializer();
+
+  static LuaObject toThrift(lua_State* L, int index, int invEnvIdx = 0);
+
+  void setInvertedEnv(int invEnvIdx);
+  LuaPrimitiveObject serialize(int index);
+  std::vector<LuaRefObject> finish();
 
  private:
-  void doSerialize(LuaPrimitiveObject& obj, lua_State* L, int index, int level,
+  struct SerializationContext {
+    int convertedIdx;
+    int invEnvIdx;
+  };
+
+  void doSerialize(LuaPrimitiveObject& obj, int index,
+                   const SerializationContext& ctx, int level,
                    bool allowRefs=true);
-  void doSerializeTable(LuaTable& obj, lua_State* L, int index, int level);
-  void doSerializeFunction(LuaFunction& obj, lua_State* L, int index,
-                           int level);
+  void doSerializeTable(LuaTable& obj, int index,
+                        const SerializationContext& ctx, int level);
+  void doSerializeFunction(LuaFunction& obj, int index,
+                           const SerializationContext& ctx, int level);
 
-  int invertedEnvIdx_;
+  lua_State* L_;
 
-  LuaObject out_;
-  std::unordered_map<const void*, int64_t> converted_;
+  std::vector<LuaRefObject> refs_;
 };
 
-// Deserialize a Lua object, from a Thrift object or from raw bytes
-// (*without* length prepended)
+// In the common case of deserializing only one object,
+// use Deserializer::fromThrift.
+//
+// A deserializer may deserialize multiple objects from Thrift, if they
+// were serialized with the same de-duplicated references (between
+// consecutive calls to Serializer::finish()).
+//
+// Usage:
+// - create the Deserializer object
+// - set the environment (see the comments for the "envs" argument to
+//   fb.thrift.to_file)
+// - set the list of references using start()
+// - deserialize objects using deserialize(); deserialize() pushes the object
+//   onto the stack.
+// - call finish() to release resources, after which the Deserializer object
+//   may be used again.
 class Deserializer {
  public:
   enum : unsigned int {
     NO_BYTECODE = 1U << 0,
   };
-  explicit Deserializer(unsigned int options=0) : options_(options) { }
+  explicit Deserializer(lua_State* L, unsigned int options=0);
+  ~Deserializer();
 
-  int fromThrift(lua_State* L, LuaObject&& obj, int envIdx = 0);
+  void setEnv(int envIdx);
+  void start(std::vector<LuaRefObject>&& refs);
+  int deserialize(LuaPrimitiveObject&& obj);
+  void finish();
+
+  static int fromThrift(lua_State* L, LuaObject&& obj,
+                        unsigned int options = 0,
+                        int envIdx = 0);
 
  private:
-  void doDeserializeRefs(lua_State* L);
-  int doDeserialize(lua_State* L, LuaPrimitiveObject& obj, int level,
+  void doDeserializeRefs();
+  int doDeserialize(LuaPrimitiveObject& obj, int convertedIdx, int level,
                     bool allowRefs=true);
-  void doDeserializeFunction(lua_State* L, LuaFunction& obj);
-  void doSetTable(lua_State* L, int index, LuaTable& obj);
-  void doSetUpvalues(lua_State* L, int index, LuaFunction& obj);
+  void doDeserializeFunction(LuaFunction& obj);
+  void doSetTable(int index, int convertedIdx, LuaTable& obj);
+  void doSetUpvalues(int index, int convertedIdx, LuaFunction& obj);
 
+  lua_State* L_;
+  std::vector<LuaRefObject> refs_;
   unsigned int options_;
-  // Cache elements that we've already seen; map from refid (in the
-  // thrift object) to position in the converted Lua table (which is itself
-  // at convertedIdx_ on the Lua stack)
-  LuaObject in_;
-  int convertedIdx_ = 0;
-  int envIdx_ = 0;
 };
 
 }}  // namespaces
