@@ -224,7 +224,9 @@ struct LuaOp<
 template <class T>
 struct LuaOp<
   T,
-  typename std::enable_if<folly::IsSomeString<T>::value>::type>
+  typename std::enable_if<
+    (folly::IsSomeString<T>::value ||
+     std::is_same<T, folly::StringPiece>::value)>::type>
   : public LuaOpBase<T, LuaOp<T>> {
   inline static void push(lua_State* L, const T& value) {
     lua_pushlstring(L, value.data(), value.size());

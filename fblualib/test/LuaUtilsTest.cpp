@@ -3,7 +3,7 @@
  * @author Tudor Bosman (tudorb@fb.com)
  */
 
-#include "fblualib/LuaUtils.h"
+#include <fblualib/LuaUtils.h>
 
 #include <glog/logging.h>
 #include <gtest/gtest.h>
