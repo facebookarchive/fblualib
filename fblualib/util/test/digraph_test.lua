@@ -32,6 +32,11 @@ function TestDigraph:testBasic()
     local G = self.G
 
     assertEquals(10, #G)
+    for i = 1, 10 do
+       assertTrue(G:has_vertex(i))
+    end
+    assertFalse(G:has_vertex(11))
+
     assertEquals(10, G:vertex_count())
     assertEquals(9, G:edge_count())
     assertEquals({10}, G:sources())
@@ -50,6 +55,24 @@ function TestDigraph:testBasic()
     assertEquals({3}, sorted(G:successors(1)))
     assertEquals({1, 4}, sorted(G:predecessors(3)))
     assertEquals({2}, G:successors(3))
+end
+
+function TestDigraph:testRemoveVertex()
+   local G = self.G
+
+   for i = 10, 1, -1 do
+      assertTrue(G:has_vertex(i))
+      if i > 1 then
+         assertEquals(G:get_edge(i, i - 1), (i - 1) * 10)
+      end
+
+      G:remove_vertex(i)
+      assertFalse(G:has_vertex(i))
+
+      if i > 1 then
+         assertEquals(G:get_edge(i, i - 1), nil)
+      end
+   end
 end
 
 function TestDigraph:testForEach()
