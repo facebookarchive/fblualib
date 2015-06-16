@@ -17,10 +17,9 @@ function testRun()
     local r = reactor.Reactor()
     r:run(function()
         callback_ran = true
-        r:terminate_loop()
     end)
     assertTrue(not callback_ran)
-    r:loop()
+    assertEquals(1, r:loop_nb())
     assertTrue(callback_ran)
 end
 
@@ -29,10 +28,9 @@ function testRunAfterDelay()
     local r = reactor.Reactor()
     r:run_after_delay(0.05, function()
         callback_ran = true
-        r:terminate_loop()
     end)
     assertTrue(not callback_ran)
-    r:loop()
+    assertEquals(1, r:loop())
     assertTrue(callback_ran)
 end
 
@@ -43,14 +41,27 @@ function testLoopForever()
         callback_count = callback_count + 1
         if callback_count ~= 5 then
             r:run(callback)
-        else
-            r:terminate_loop()
         end
     end
     r:run(callback)
-    assertEquals(0, callback_count)
-    r:loop()
+    assertEquals(5, r:loop_nb())
     assertEquals(5, callback_count)
+    assertEquals(0, r:loop_nb())
+end
+
+function testRemoveCallback()
+    local r = reactor.Reactor()
+    local id = r:run(function() error('should not run') end)
+    r:remove_callback(id)
+    assertEquals(0, r:loop_nb())
+end
+
+function testErrorPropagation()
+    local r = reactor.Reactor()
+    r:run(function() error('hello') end)
+    local ok, err = pcall(function() r:loop_nb() end)
+    assertFalse(ok)
+    assertTrue(string.match(err, 'hello$'))
 end
 
 LuaUnit:main()

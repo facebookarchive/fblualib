@@ -20,7 +20,6 @@
 #include <folly/Random.h>
 #include <folly/String.h>
 #include <folly/ThreadLocal.h>
-#include <folly/io/async/EventBase.h>
 #include <fblualib/CrossThreadRegistry.h>
 
 // We may be running in a program that embeds google-glog, or we may not.
@@ -189,51 +188,6 @@ const char* cUnescape(const char* str, size_t len, std::string* out) {
   } catch (const std::exception& e) {
     *errBuffer = e.what();
     return errBuffer->data();
-  }
-}
-
-folly::EventBase* eventBaseNew() {
-  try {
-    return new folly::EventBase;
-  } catch (const std::bad_alloc&) {
-    return nullptr;
-  }
-}
-
-void eventBaseDelete(folly::EventBase* eb) {
-  delete eb;
-}
-
-bool eventBaseLoopForever(folly::EventBase* eb) {
-  try {
-    eb->loopForever();
-    return true;
-  } catch (const std::bad_alloc&) {
-    return false;
-  } catch (const std::system_error&) {
-    return false;
-  }
-}
-
-void eventBaseTerminateLoop(folly::EventBase* eb) {
-  eb->terminateLoopSoon();
-}
-
-bool eventBaseRunInLoop(folly::EventBase* eb, void (*fn)(void)) {
-  try {
-    eb->runInLoop(fn);
-    return true;
-  } catch (const std::bad_alloc&) {
-    return false;
-  }
-}
-
-bool eventBaseRunAfterDelay(folly::EventBase* eb, int milliseconds,
-                            void (*fn)(void)) {
-  try {
-    return eb->tryRunAfterDelay(fn, milliseconds);
-  } catch (const std::bad_alloc&) {
-    return false;
   }
 }
 
