@@ -91,10 +91,12 @@ struct LuaRefObject {
   7: optional LuaUserData customUserDataVal,
 }
 
+typedef list<LuaRefObject> LuaRefList
+
 // A Lua object.
 struct LuaObject {
   1: LuaPrimitiveObject value,
-  2: list<LuaRefObject> refs,
+  2: LuaRefList refs,
 }
 
 struct LuaVersionInfo {

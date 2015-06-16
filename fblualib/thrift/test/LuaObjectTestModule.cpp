@@ -116,6 +116,132 @@ void customDataDeserializer(lua_State* L, const folly::IOBuf& buf) {
   doPushUserData(L, cursor.read<int>());
 }
 
+int checkTableIteration(lua_State* L) {
+  auto obj = getFromString(L, 1);
+
+  // clowny
+  std::vector<folly::Optional<double>> listVals { 10, 20, 30 };
+  folly::Optional<double> trueVal = 40;
+  folly::Optional<double> falseVal = 50;
+  std::unordered_map<std::string, folly::Optional<double>> stringVals {
+    {"hello", 60},
+    {"world", 70},
+  };
+  std::unordered_map<int, folly::Optional<double>> intVals {
+    {100, 80},
+    {200, 90},
+  };
+
+  auto begin = tableBegin(obj);
+  auto end = tableEnd(obj);
+  for (auto it = begin; it != end; ++it) {
+    auto& key = it->first;
+    auto& value = it->second;
+
+    double ev = 0;
+
+    switch (getType(key, obj.refs)) {
+    case LuaObjectType::NIL:
+      luaL_error(L, "invalid NIL key");
+      break;
+    case LuaObjectType::DOUBLE:
+      {
+        auto dk = getDouble(key);
+        auto ik = int(dk);
+        if (double(ik) != dk) {
+          luaL_error(L, "invalid non-int numeric key");
+        }
+        if (ik >= 1 && ik <= listVals.size()) {
+          auto& evp = listVals[ik - 1];
+          if (!evp) {
+            luaL_error(L, "duplicate list key");
+          }
+          ev = *evp;
+          evp.clear();
+        } else {
+          auto pos = intVals.find(ik);
+          if (pos == intVals.end()) {
+            luaL_error(L, "unrecognized int key");
+          }
+          if (!pos->second) {
+            luaL_error(L, "duplicate int key");
+          }
+          ev = *pos->second;
+          pos->second.clear();
+        }
+      }
+      break;
+    case LuaObjectType::BOOL:
+      {
+        auto bk = getBool(key);
+        if (bk) {
+          if (!trueVal) {
+            luaL_error(L, "duplicate true key");
+          }
+          ev = *trueVal;
+          trueVal.clear();
+        } else {
+          if (!falseVal) {
+            luaL_error(L, "duplicate false key");
+          }
+          ev = *falseVal;
+          falseVal.clear();
+        }
+      }
+      break;
+    case LuaObjectType::STRING:
+      {
+        auto sk = getString(key, obj.refs).str();
+        auto pos = stringVals.find(sk);
+        if (pos == stringVals.end()) {
+          luaL_error(L, "unrecognized string key");
+        }
+        if (!pos->second) {
+          luaL_error(L, "duplicate string key");
+        }
+        ev = *pos->second;
+        pos->second.clear();
+      }
+      break;
+    default:
+      luaL_error(L, "invalid key type");
+    }
+
+    double fv = getDouble(value);
+    if (ev != fv) {
+      luaL_error(L, "mismatched value");
+    }
+  }
+
+  for (auto& v : listVals) {
+    if (v) {
+      luaL_error(L, "list key missing");
+    }
+  }
+
+  if (trueVal) {
+    luaL_error(L, "true key missing");
+  }
+
+  if (falseVal) {
+    luaL_error(L, "false key missing");
+  }
+
+  for (auto& p : stringVals) {
+    if (p.second) {
+      luaL_error(L, "string key missing");
+    }
+  }
+
+  for (auto& p : intVals) {
+    if (p.second) {
+      luaL_error(L, "int key missing");
+    }
+  }
+
+  return 0;
+}
+
 const struct luaL_reg gFuncs[] = {
   // write_ functions return a string representing the Thrift-encoded argument
   {"write_nil", writeNil},
@@ -134,6 +260,8 @@ const struct luaL_reg gFuncs[] = {
   {"new_userdata", newUserData},
   // Get the encapsulated int from the given userdata object, checking the type
   {"get_userdata", getUserData},
+  // Check the table created in the test
+  {"check_table_iteration", checkTableIteration},
   {nullptr, nullptr},  // sentinel
 };
 

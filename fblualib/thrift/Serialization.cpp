@@ -281,7 +281,7 @@ LuaPrimitiveObject Serializer::serialize(int index) {
   return out;
 }
 
-std::vector<LuaRefObject> Serializer::finish() {
+LuaRefList Serializer::finish() {
   // Clear converted cache
   lua_pushlightuserdata(L_, this);
   lua_gettable(L_, LUA_REGISTRYINDEX);
@@ -712,7 +712,7 @@ Deserializer::Deserializer(lua_State* L, unsigned int options)
   lua_settable(L_, LUA_REGISTRYINDEX);
 }
 
-void Deserializer::start(const std::vector<LuaRefObject>* refs) {
+void Deserializer::start(const LuaRefList* refs) {
   DCHECK(!refs_);
   DCHECK(refs);
   refs_ = refs;

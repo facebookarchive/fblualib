@@ -199,7 +199,7 @@ class Serializer {
 
   void setInvertedEnv(int invEnvIdx);
   LuaPrimitiveObject serialize(int index);
-  std::vector<LuaRefObject> finish();
+  LuaRefList finish();
 
  private:
   struct SerializationContext {
@@ -219,7 +219,7 @@ class Serializer {
 
   lua_State* L_;
 
-  std::vector<LuaRefObject> refs_;
+  LuaRefList refs_;
   unsigned int options_;
 };
 
@@ -253,7 +253,7 @@ class Deserializer {
   ~Deserializer();
 
   void setEnv(int envIdx);
-  void start(const std::vector<LuaRefObject>* refs);
+  void start(const LuaRefList* refs);
   int deserialize(const LuaPrimitiveObject& obj);
   void finish();
 
@@ -272,7 +272,7 @@ class Deserializer {
   bool mayShare() const { return options_ & MAY_SHARE_MEMORY; }
 
   lua_State* L_;
-  const std::vector<LuaRefObject>* refs_;
+  const LuaRefList* refs_;
   unsigned int options_;
 };
 
