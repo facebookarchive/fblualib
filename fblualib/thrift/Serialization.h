@@ -186,10 +186,16 @@ void unregisterUserDataCallbacks(lua_State* L, folly::StringPiece key);
 // of tables. {package.loaded, {buf}} in our example.
 class Serializer {
  public:
-  explicit Serializer(lua_State* L);
+  enum : unsigned int {
+    // Allow Thrift structures to share memory with original Lua objects
+    MAY_SHARE_MEMORY = 1U << 0,
+  };
+  explicit Serializer(lua_State* L, unsigned int options=MAY_SHARE_MEMORY);
   ~Serializer();
 
-  static LuaObject toThrift(lua_State* L, int index, int invEnvIdx = 0);
+  static LuaObject toThrift(lua_State* L, int index,
+                            int invEnvIdx = 0,
+                            unsigned int options = MAY_SHARE_MEMORY);
 
   void setInvertedEnv(int invEnvIdx);
   LuaPrimitiveObject serialize(int index);
@@ -209,9 +215,12 @@ class Serializer {
   void doSerializeFunction(LuaFunction& obj, int index,
                            const SerializationContext& ctx, int level);
 
+  bool mayShare() const { return options_ & MAY_SHARE_MEMORY; }
+
   lua_State* L_;
 
   std::vector<LuaRefObject> refs_;
+  unsigned int options_;
 };
 
 // In the common case of deserializing only one object,
@@ -225,7 +234,8 @@ class Serializer {
 // - create the Deserializer object
 // - set the environment (see the comments for the "envs" argument to
 //   fb.thrift.to_file)
-// - set the list of references using start()
+// - set the list of references using start(); the list of references must
+//   remain valid until finish()
 // - deserialize objects using deserialize(); deserialize() pushes the object
 //   onto the stack.
 // - call finish() to release resources, after which the Deserializer object
@@ -233,30 +243,36 @@ class Serializer {
 class Deserializer {
  public:
   enum : unsigned int {
+    // Do not deserialize bytecode (error out if encountered)
     NO_BYTECODE = 1U << 0,
+
+    // Share memory with the original Thrift structures if possible
+    MAY_SHARE_MEMORY = 1U << 1,
   };
-  explicit Deserializer(lua_State* L, unsigned int options=0);
+  explicit Deserializer(lua_State* L, unsigned int options=MAY_SHARE_MEMORY);
   ~Deserializer();
 
   void setEnv(int envIdx);
-  void start(std::vector<LuaRefObject>&& refs);
-  int deserialize(LuaPrimitiveObject&& obj);
+  void start(const std::vector<LuaRefObject>* refs);
+  int deserialize(const LuaPrimitiveObject& obj);
   void finish();
 
-  static int fromThrift(lua_State* L, LuaObject&& obj,
-                        unsigned int options = 0,
-                        int envIdx = 0);
+  static int fromThrift(lua_State* L, const LuaObject& obj,
+                        int envIdx = 0,
+                        unsigned int options = MAY_SHARE_MEMORY);
 
  private:
   void doDeserializeRefs();
-  int doDeserialize(LuaPrimitiveObject& obj, int convertedIdx, int level,
+  int doDeserialize(const LuaPrimitiveObject& obj, int convertedIdx, int level,
                     bool allowRefs=true);
-  void doDeserializeFunction(LuaFunction& obj);
-  void doSetTable(int index, int convertedIdx, LuaTable& obj);
-  void doSetUpvalues(int index, int convertedIdx, LuaFunction& obj);
+  void doDeserializeFunction(const LuaFunction& obj);
+  void doSetTable(int index, int convertedIdx, const LuaTable& obj);
+  void doSetUpvalues(int index, int convertedIdx, const LuaFunction& obj);
+
+  bool mayShare() const { return options_ & MAY_SHARE_MEMORY; }
 
   lua_State* L_;
-  std::vector<LuaRefObject> refs_;
+  const std::vector<LuaRefObject>* refs_;
   unsigned int options_;
 };
 

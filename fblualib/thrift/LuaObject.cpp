@@ -79,17 +79,16 @@ thpp::ThriftTensorDataType getTensorType(const LuaObject& obj) {
 }
 
 template <class T>
-thpp::Tensor<T> getTensor(LuaObject&& obj) {
+thpp::Tensor<T> getTensor(const LuaObject& obj, bool mayShare) {
   auto& ref = getRef(obj);
   if (!ref.__isset.tensorVal) {
     throw std::invalid_argument("LuaObject of wrong type");
   }
-  auto tensor = thpp::Tensor<T>(std::move(ref.tensorVal));
-  obj = LuaObject();
+  auto tensor = thpp::Tensor<T>(ref.tensorVal, mayShare);
   return tensor;
 }
 
-#define X(T) template thpp::Tensor<T> getTensor(LuaObject&&);
+#define X(T) template thpp::Tensor<T> getTensor(const LuaObject&, bool);
 X(unsigned char)
 X(int32_t)
 X(int64_t)
@@ -125,10 +124,10 @@ LuaObject make(folly::StringPiece val) {
 }
 
 template <class T>
-LuaObject make(thpp::Tensor<T>& val) {
+LuaObject make(const thpp::Tensor<T>& val, bool mayShare) {
   LuaRefObject ref;
   ref.__isset.tensorVal = true;
-  val.serialize(ref.tensorVal);
+  val.serialize(ref.tensorVal, thpp::ThriftTensorEndianness::NATIVE, mayShare);
 
   LuaObject obj;
   obj.refs.push_back(std::move(ref));
@@ -137,7 +136,7 @@ LuaObject make(thpp::Tensor<T>& val) {
   return obj;
 }
 
-#define X(T) template LuaObject make(thpp::Tensor<T>&);
+#define X(T) template LuaObject make(const thpp::Tensor<T>&, bool);
 X(unsigned char)
 X(int32_t)
 X(int64_t)

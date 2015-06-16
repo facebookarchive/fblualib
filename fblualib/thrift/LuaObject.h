@@ -41,8 +41,8 @@ double getDouble(const LuaObject& obj);
 bool getBool(const LuaObject& obj);
 folly::StringPiece getString(const LuaObject& obj);
 thpp::ThriftTensorDataType getTensorType(const LuaObject& obj);
-// Note, rvalue overload only, as getTensor is destructive.
-template <class T> thpp::Tensor<T> getTensor(LuaObject&& obj);
+template <class T> thpp::Tensor<T> getTensor(const LuaObject& obj,
+                                             bool mayShare = true);
 
 // Writers
 
@@ -50,14 +50,8 @@ LuaObject make();  // nil
 LuaObject make(double val);
 LuaObject make(bool val);
 LuaObject make(folly::StringPiece val);
-// Note, non-const reference; the tensor shares memory with the given LuaObject
-// and so any changes in the tensor are reflected in the LuaObject
 template <class T>
-LuaObject make(thpp::Tensor<T>& val);
-template <class T>
-LuaObject make(thpp::Tensor<T>&& val) {
-  return make<T>(val);
-}
+LuaObject make(const thpp::Tensor<T>& val, bool mayShare = true);
 
 // Serialize to string or file, see Encoding.h
 template <class Writer>

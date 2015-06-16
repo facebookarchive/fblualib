@@ -118,7 +118,7 @@ int doDeserialize(lua_State* L, DecodedObject&& decodedObject, int envIdx) {
   }
 
   return Deserializer::fromThrift(L, std::move(decodedObject.output),
-                                  options, envIdx);
+                                  envIdx, options);
 }
 
 int deserializeFromString(lua_State* L) {

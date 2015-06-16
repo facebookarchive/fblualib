@@ -221,7 +221,9 @@ void Serializer::setInvertedEnv(int invEnvIdx) {
   lua_pop(L_, 1);
 }
 
-Serializer::Serializer(lua_State* L) : L_(L) {
+Serializer::Serializer(lua_State* L, unsigned int options)
+  : L_(L),
+    options_(options) {
   // Store associated state in registry under key == this:
   // { converted_cache, inverted_env }
   //
@@ -245,10 +247,11 @@ Serializer::~Serializer() {
   lua_settable(L_, LUA_REGISTRYINDEX);
 }
 
-LuaObject Serializer::toThrift(lua_State* L, int index, int invEnvIdx) {
+LuaObject Serializer::toThrift(lua_State* L, int index, int invEnvIdx,
+                               unsigned int options) {
   LuaObject out;
 
-  Serializer serializer(L);
+  Serializer serializer(L, options);
   serializer.setInvertedEnv(invEnvIdx);
   out.value = serializer.serialize(index);
   out.refs = serializer.finish();
@@ -472,7 +475,8 @@ void Serializer::doSerialize(LuaPrimitiveObject& obj, int index,
       if (tensor) { \
         XLOG << "Tensor<" #TYPE ">"; \
         ref.__isset.tensorVal = true; \
-        tensor->serialize(ref.tensorVal); \
+        tensor->serialize(ref.tensorVal, thpp::ThriftTensorEndianness::NATIVE, \
+                          mayShare()); \
         break; \
       } \
     }
@@ -489,7 +493,8 @@ void Serializer::doSerialize(LuaPrimitiveObject& obj, int index,
       if (storage) { \
         XLOG << "Storage<" #TYPE ">"; \
         ref.__isset.storageVal = true; \
-        storage->serialize(ref.storageVal); \
+        storage->serialize(ref.storageVal, \
+                           thpp::ThriftTensorEndianness::NATIVE, mayShare()); \
         break; \
       } \
     }
@@ -696,6 +701,7 @@ void Serializer::doSerializeFunction(LuaFunction& obj,
 
 Deserializer::Deserializer(lua_State* L, unsigned int options)
   : L_(L),
+    refs_(nullptr),
     options_(options) {
   // Store in the registry a 2-element table: converted cache and
   // env.
@@ -706,8 +712,10 @@ Deserializer::Deserializer(lua_State* L, unsigned int options)
   lua_settable(L_, LUA_REGISTRYINDEX);
 }
 
-void Deserializer::start(std::vector<LuaRefObject>&& refs) {
-  refs_ = std::move(refs);
+void Deserializer::start(const std::vector<LuaRefObject>* refs) {
+  DCHECK(!refs_);
+  DCHECK(refs);
+  refs_ = refs;
 
   doDeserializeRefs();
 }
@@ -719,6 +727,7 @@ Deserializer::~Deserializer() {
 }
 
 void Deserializer::setEnv(int envIdx) {
+  DCHECK(!refs_);
   bool set = false;
 
   if (envIdx != 0) {
@@ -740,23 +749,25 @@ void Deserializer::setEnv(int envIdx) {
 }
 
 void Deserializer::finish() {
+  DCHECK(refs_);
   // Clear converted cache
   lua_pushlightuserdata(L_, this);
   lua_gettable(L_, LUA_REGISTRYINDEX);
   lua_newtable(L_);
   lua_rawseti(L_, -2, 1);
   lua_pop(L_, 1);
+  refs_ = nullptr;
 }
 
-int Deserializer::fromThrift(lua_State* L, LuaObject&& obj,
-                             unsigned int options, int envIdx) {
+int Deserializer::fromThrift(lua_State* L, const LuaObject& obj,
+                             int envIdx, unsigned int options) {
   Deserializer deserializer(L, options);
   deserializer.setEnv(envIdx);
-  deserializer.start(std::move(obj.refs));
-  return deserializer.deserialize(std::move(obj.value));
+  deserializer.start(&obj.refs);
+  return deserializer.deserialize(obj.value);
 }
 
-int Deserializer::deserialize(LuaPrimitiveObject&& obj) {
+int Deserializer::deserialize(const LuaPrimitiveObject& obj) {
   int top = lua_gettop(L_);
   lua_pushlightuserdata(L_, this);
   lua_gettable(L_, LUA_REGISTRYINDEX);
@@ -836,9 +847,9 @@ void Deserializer::doDeserializeRefs() {
   int convertedIdx = lua_gettop(L_) - 1;
   int envIdx = lua_isnil(L_, -1) ? 0 : convertedIdx + 1;
 
-  for (int i = 0; i < refs_.size(); ++i) {
+  for (int i = 0; i < refs_->size(); ++i) {
 #define XLOG DVLOG(XLOG_LEVEL) << "D: reference " << i << ": "
-    auto& ref = refs_[i];
+    auto& ref = (*refs_)[i];
 
     auto record = [&] {
       lua_rawseti(L_, convertedIdx, i + 1);  // 1-based
@@ -864,7 +875,7 @@ void Deserializer::doDeserializeRefs() {
 #define DESERIALIZE_TENSOR(TYPE, VALUE) \
       case thpp::ThriftTensorDataType::VALUE: \
         XLOG << "Tensor<" #TYPE ">"; \
-        luaPushTensor(L_, thpp::Tensor<TYPE>(std::move(ref.tensorVal))); \
+        luaPushTensor(L_, thpp::Tensor<TYPE>(ref.tensorVal, mayShare())); \
         break;
       DESERIALIZE_TENSOR(unsigned char, BYTE)
       DESERIALIZE_TENSOR(int32_t, INT32)
@@ -881,7 +892,7 @@ void Deserializer::doDeserializeRefs() {
 #define DESERIALIZE_STORAGE(TYPE, VALUE) \
       case thpp::ThriftTensorDataType::VALUE: \
         XLOG << "Storage<" #TYPE ">"; \
-        luaPushStorage(L_, thpp::Storage<TYPE>(std::move(ref.storageVal))); \
+        luaPushStorage(L_, thpp::Storage<TYPE>(ref.storageVal, mayShare())); \
         break;
       DESERIALIZE_STORAGE(unsigned char, BYTE)
       DESERIALIZE_STORAGE(int32_t, INT32)
@@ -922,8 +933,8 @@ void Deserializer::doDeserializeRefs() {
     }
   }
 
-  for (int i = 0; i < refs_.size(); ++i) {
-    auto& ref = refs_[i];
+  for (int i = 0; i < refs_->size(); ++i) {
+    auto& ref = (*refs_)[i];
 
     if (!ref.__isset.tableVal && !ref.__isset.functionVal) {
       continue;
@@ -945,10 +956,10 @@ void Deserializer::doDeserializeRefs() {
 
 #undef XLOG
 #define XLOG DVLOG(XLOG_LEVEL) << "D: " << indent(level)
-int Deserializer::doDeserialize(LuaPrimitiveObject& obj,
+int Deserializer::doDeserialize(const LuaPrimitiveObject& obj,
                                 int convertedIdx, int level, bool allowRefs) {
   if (obj.__isset.refVal) {
-    if (!allowRefs || obj.refVal < 0 || obj.refVal >= refs_.size()) {
+    if (!allowRefs || obj.refVal < 0 || obj.refVal >= refs_->size()) {
       luaL_error(L_, "Invalid referernce id %d", int(obj.refVal));
     }
     XLOG << "reference " << obj.refVal;
@@ -979,7 +990,8 @@ int Deserializer::doDeserialize(LuaPrimitiveObject& obj,
 #undef XLOG
 #define XLOG DVLOG(XLOG_LEVEL) << "D:   "
 
-void Deserializer::doSetTable(int index, int convertedIdx, LuaTable& obj) {
+void Deserializer::doSetTable(int index, int convertedIdx,
+                              const LuaTable& obj) {
   if (obj.__isset.listKeys) {
     for (int i = 0; i < obj.listKeys.size(); ++i) {
       XLOG << "(list) [" << i + 1 << "]";
@@ -1066,7 +1078,7 @@ const char* luaReaderFromIOBuf(lua_State* L, void* ud, size_t* sz) {
 }
 }  // namespace
 
-void Deserializer::doDeserializeFunction(LuaFunction& obj) {
+void Deserializer::doDeserializeFunction(const LuaFunction& obj) {
   folly::io::Cursor cursor(&obj.bytecode);
   int r = lua_load(L_, luaReaderFromIOBuf, &cursor, "<thrift>");
   if (r != 0) {
@@ -1074,7 +1086,8 @@ void Deserializer::doDeserializeFunction(LuaFunction& obj) {
   }
 }
 
-void Deserializer::doSetUpvalues(int idx, int convertedIdx, LuaFunction& obj) {
+void Deserializer::doSetUpvalues(int idx, int convertedIdx,
+                                 const LuaFunction& obj) {
   for (int i = 0; i < obj.upvalues.size(); ++i) {
     doDeserialize(obj.upvalues[i], convertedIdx, 2);
     auto r = lua_setupvalue(L_, idx, i + 1);
