@@ -98,10 +98,6 @@ int getUserData(lua_State* L) {
   return 1;
 }
 
-folly::IOBuf wrap(const char* ptr) {
-  return folly::IOBuf(folly::IOBuf::WRAP_BUFFER, ptr, strlen(ptr));
-}
-
 folly::IOBuf customDataSerializer(lua_State* L, int objIndex) {
   auto ptr = lua_topointer(L, objIndex);
   luaL_getmetatable(L, kMetatableKey);

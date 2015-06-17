@@ -57,22 +57,6 @@ class Reactor : public folly::Executor {
   std::unique_ptr<folly::EventBase> eb_;
 };
 
-template <>
-const UserDataMethod<Reactor> Metatable<Reactor>::metamethods[] = {
-  {nullptr, nullptr},
-};
-
-template <>
-const UserDataMethod<Reactor> Metatable<Reactor>::methods[] = {
-  {"add_callback", &Reactor::luaAddCallback},
-  {"add_callback_delayed", &Reactor::luaAddCallbackDelayed},
-  {"lookup_callback", &Reactor::luaLookupCallback},
-  {"remove_callback", &Reactor::luaRemoveCallback},
-  {"loop", &Reactor::luaLoop},
-  {"get_executor", &Reactor::luaGetExecutor},
-  {nullptr, nullptr},
-};
-
 Reactor::Reactor(lua_State* L)
   : seq_(0),
     L_(L),
@@ -304,6 +288,26 @@ const luaL_Reg gModuleFuncs[] = {
 };
 
 }  // namespace
+
+namespace fblualib {
+
+template <>
+const UserDataMethod<Reactor> Metatable<Reactor>::metamethods[] = {
+  {nullptr, nullptr},
+};
+
+template <>
+const UserDataMethod<Reactor> Metatable<Reactor>::methods[] = {
+  {"add_callback", &Reactor::luaAddCallback},
+  {"add_callback_delayed", &Reactor::luaAddCallbackDelayed},
+  {"lookup_callback", &Reactor::luaLookupCallback},
+  {"remove_callback", &Reactor::luaRemoveCallback},
+  {"loop", &Reactor::luaLoop},
+  {"get_executor", &Reactor::luaGetExecutor},
+  {nullptr, nullptr},
+};
+
+}  // namespace fblualib
 
 extern "C" int LUAOPEN(lua_State* L) {
   createMetatable<Reactor>(L);

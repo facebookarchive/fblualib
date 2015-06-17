@@ -336,7 +336,7 @@ bool serializeUserData(lua_State* L, int index, int mtIndex,
   // Retrieve serializer (serde[2])
   lua_rawgeti(L, -1, 2);  // tab mttab keytab key serde serializer
   auto serializer = reinterpret_cast<UserDataSerializer>(
-      lua_topointer(L, -1));
+      lua_touserdata(L, -1));
   lua_pop(L, 2);  // tab mttab keytab key
 
   // Call serializer
@@ -805,7 +805,7 @@ bool deserializeUserData(lua_State* L, const LuaUserData& cud) {
   DCHECK(lua_islightuserdata(L, -1));
 
   auto deserializer = reinterpret_cast<UserDataDeserializer>(
-      lua_topointer(L, -1));
+      lua_touserdata(L, -1));
 
   lua_rawgeti(L, -2, 1);  // tab keytab value deserializer mt
   lua_replace(L, -5);  // mt keytab value deserializer

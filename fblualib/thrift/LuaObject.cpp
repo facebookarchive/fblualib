@@ -56,12 +56,6 @@ const LuaRefObject& getRef(const LuaPrimitiveObject& pobj,
   }
   return refs.at(pobj.refVal);
 }
-LuaRefObject& getRef(const LuaPrimitiveObject& pobj, LuaRefList& refs) {
-  if (UNLIKELY(!pobj.__isset.refVal)) {
-    throw std::invalid_argument("LuaObject of wrong type");
-  }
-  return refs.at(pobj.refVal);
-}
 }  // namespace
 
 folly::StringPiece getString(const LuaPrimitiveObject& pobj,
