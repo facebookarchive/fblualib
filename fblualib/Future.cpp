@@ -47,7 +47,7 @@ Promise::Promise(Promise&& other) noexcept
 
 Promise& Promise::operator=(Promise&& other) {
   if (this != &other) {
-    // CHECK(!L_) << "Promise overwritten without being fulfilled";
+    CHECK(!L_) << "Promise overwritten without being fulfilled";
     L_ = other.L_;
     key_ = other.key_;
     other.L_ = nullptr;
@@ -57,7 +57,7 @@ Promise& Promise::operator=(Promise&& other) {
 }
 
 Promise::~Promise() {
-  // CHECK(!L_) << "Promise destroyed without being fulfilled";
+  CHECK(!L_) << "Promise destroyed without being fulfilled";
 }
 
 void Promise::validate(lua_State* L) {
