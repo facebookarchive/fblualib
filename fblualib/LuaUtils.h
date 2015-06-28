@@ -13,9 +13,10 @@
 
 #include <lua.hpp>
 
-#include <thpp/Tensor.h>
+#include <boost/noncopyable.hpp>
 #include <folly/Optional.h>
 #include <folly/Range.h>
+#include <thpp/Tensor.h>
 
 namespace fblualib {
 
