@@ -47,6 +47,8 @@ class Reactor : public folly::Executor {
   int luaGetExecutor(lua_State* L);
 
  private:
+  int doLoop();
+
   int doAddCallback(int table);
   bool doRemoveCallback(int key, int table);
   bool doLookupCallback(int key, int table);
@@ -71,6 +73,33 @@ Reactor::Reactor(lua_State* L)
 }
 
 Reactor::~Reactor() {
+  // This is fugly.
+  //
+  // The EventBase has pointers to this (via callbacks added using add()),
+  // and it can run callbacks during destruction. So we must make sure to
+  // drain it explicitly.
+  //
+  // Even more, we normally only execute callbacks once we get back to Lua
+  // (via luaLoop), so even if we drained the EventBase here, those callbacks
+  // would never get to run.
+  //
+  // So we have to drain it with a real Lua state.
+  //
+  // We'll first destroy the EventBase (running any callbacks that need to run
+  // during destruction) then drain our callback tables.
+
+  // First, make sure eb_ is nullptr, so that any attempt to use it (perhaps
+  // by referring to this Reactor recursively) fails hard. Then, destroy the
+  // EventBase.
+  eb_.reset();
+
+  // Now, run our callbacks.
+  lua_pushlightuserdata(L_, this);
+  lua_gettable(L_, LUA_REGISTRYINDEX);
+  lua_rawgeti(L_, -1, kImmediateCallbacksTable);
+  while (doLoop() != 0) { }
+  lua_pop(L_, 1);
+
   lua_pushlightuserdata(L_, this);
   lua_pushnil(L_);
   lua_settable(L_, LUA_REGISTRYINDEX);
@@ -103,6 +132,10 @@ void Reactor::add(folly::Func func) {
 
 int Reactor::luaAddCallbackDelayed(lua_State* L) {
   DCHECK(L == L_);
+  if (!eb_) {
+    luaL_error(
+        L_, "Reactor being destroyed, delayed callbacks no longer allowed");
+  }
   lua_pushvalue(L_, 3);
   int key = doAddCallback(kDelayedCallbacksTable);
 
@@ -233,14 +266,14 @@ void Reactor::doAddDelayedCallback(int key) {
 }
 
 int Reactor::luaLoop(lua_State* L) {
+  DCHECK(L == L_);
   auto block = luaGetChecked<bool>(L, 2);
   int flags = block ? 0 : EVLOOP_NONBLOCK;
-  DCHECK(L == L_);
   lua_pushlightuserdata(L_, this);
   lua_gettable(L_, LUA_REGISTRYINDEX);
   lua_rawgeti(L_, -1, kImmediateCallbacksTable);
   int numCallbacks = 0;
-  int top = lua_gettop(L);
+  int top = lua_gettop(L_);
 
   do {
     if (!eb_->loopOnce(flags)) {
@@ -248,28 +281,34 @@ int Reactor::luaLoop(lua_State* L) {
     }
 
     DCHECK_EQ(top, lua_gettop(L_));
-    for (;;) {
-      // tab
-      lua_pushnil(L_);
-      // tab nil
-      if (!lua_next(L_, -2)) {
-        break;
-      }
-      // tab key value
-      lua_insert(L_, -2);
-      // tab value key
-      lua_pushnil(L_);
-      // tab value key nil
-      lua_rawset(L_, -4);
-      // tab value
-      lua_call(L_, 0, 0);
-      // tab
-      ++numCallbacks;
-    }
+    numCallbacks += doLoop();
   } while (block && numCallbacks == 0);
 
   luaPush(L_, numCallbacks);
   return 1;
+}
+
+int Reactor::doLoop() {
+  int numCallbacks = 0;
+  for (;;) {
+    // tab
+    lua_pushnil(L_);
+    // tab nil
+    if (!lua_next(L_, -2)) {
+      break;
+    }
+    // tab key value
+    lua_insert(L_, -2);
+    // tab value key
+    lua_pushnil(L_);
+    // tab value key nil
+    lua_rawset(L_, -4);
+    // tab value
+    lua_call(L_, 0, 0);
+    // tab
+    ++numCallbacks;
+  }
+  return numCallbacks;
 }
 
 int Reactor::luaGetExecutor(lua_State* L) {
