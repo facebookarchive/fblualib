@@ -44,15 +44,12 @@ template<> struct Serde<T*> {                         \
   static T* load(folly::ByteRange* br) {              \
     StringReader sr(br);                              \
     auto decoded = cppDecode(sr);                     \
-    auto thppTensor = getTensor<Real>(std::move(decoded), false); \
+    auto thppTensor = getTensor<Real>(std::move(decoded)); \
     auto retval = thppTensor.moveAsTH();              \
     /* Caller's job to incref if necessary. */        \
     return retval;                                    \
   }                                                   \
 }
-
-// We can't share memory with the provided buffer at deserialization, as
-// that's a temporary buffer allocated in AtomicVector::load
 
 TENSOR_IMPL(THFloatTensor, float);
 TENSOR_IMPL(THDoubleTensor, double);

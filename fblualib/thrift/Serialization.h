@@ -19,6 +19,7 @@
 #include <folly/Optional.h>
 #include <folly/io/IOBuf.h>
 #include <fblualib/thrift/if/gen-cpp2/LuaObject_types.h>
+#include <thpp/Storage.h>
 
 namespace fblualib { namespace thrift {
 
@@ -186,16 +187,16 @@ void unregisterUserDataCallbacks(lua_State* L, folly::StringPiece key);
 // of tables. {package.loaded, {buf}} in our example.
 class Serializer {
  public:
-  enum : unsigned int {
-    // Allow Thrift structures to share memory with original Lua objects
-    MAY_SHARE_MEMORY = 1U << 0,
+  struct Options {
+    constexpr Options() { }
+    thpp::SharingMode sharing = thpp::SHARE_IOBUF_MANAGED;
   };
-  explicit Serializer(lua_State* L, unsigned int options=MAY_SHARE_MEMORY);
+  explicit Serializer(lua_State* L, Options options=Options());
   ~Serializer();
 
   static LuaObject toThrift(lua_State* L, int index,
                             int invEnvIdx = 0,
-                            unsigned int options = MAY_SHARE_MEMORY);
+                            Options options=Options());
 
   void setInvertedEnv(int invEnvIdx);
   LuaPrimitiveObject serialize(int index);
@@ -215,12 +216,10 @@ class Serializer {
   void doSerializeFunction(LuaFunction& obj, int index,
                            const SerializationContext& ctx, int level);
 
-  bool mayShare() const { return options_ & MAY_SHARE_MEMORY; }
-
   lua_State* L_;
 
   LuaRefList refs_;
-  unsigned int options_;
+  Options options_;
 };
 
 // In the common case of deserializing only one object,
@@ -242,14 +241,14 @@ class Serializer {
 //   may be used again.
 class Deserializer {
  public:
-  enum : unsigned int {
-    // Do not deserialize bytecode (error out if encountered)
-    NO_BYTECODE = 1U << 0,
-
-    // Share memory with the original Thrift structures if possible
-    MAY_SHARE_MEMORY = 1U << 1,
+  struct Options {
+    constexpr Options() { }
+    // Allow bytecode? or error out if encountered
+    bool allowBytecode = true;
+    // Memory sharing
+    thpp::SharingMode sharing = thpp::SHARE_IOBUF_MANAGED;
   };
-  explicit Deserializer(lua_State* L, unsigned int options=MAY_SHARE_MEMORY);
+  explicit Deserializer(lua_State* L, Options options = Options());
   ~Deserializer();
 
   void setEnv(int envIdx);
@@ -259,7 +258,7 @@ class Deserializer {
 
   static int fromThrift(lua_State* L, const LuaObject& obj,
                         int envIdx = 0,
-                        unsigned int options = MAY_SHARE_MEMORY);
+                        Options options = Options());
 
  private:
   void doDeserializeRefs();
@@ -269,11 +268,9 @@ class Deserializer {
   void doSetTable(int index, int convertedIdx, const LuaTable& obj);
   void doSetUpvalues(int index, int convertedIdx, const LuaFunction& obj);
 
-  bool mayShare() const { return options_ & MAY_SHARE_MEMORY; }
-
   lua_State* L_;
   const LuaRefList* refs_;
-  unsigned int options_;
+  Options options_;
 };
 
 }}  // namespaces

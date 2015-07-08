@@ -109,16 +109,16 @@ int serializeToFile(lua_State* L) {
 int doDeserialize(lua_State* L, DecodedObject&& decodedObject, int envIdx) {
   auto version = getVersion(L);
 
-  unsigned int options = 0;
+  Deserializer::Options options;
   // Check for bytecode version compatibility
   auto& decodedBytecodeVersion = decodedObject.luaVersionInfo.bytecodeVersion;
   if (decodedBytecodeVersion.empty() ||
       decodedBytecodeVersion != version.bytecodeVersion) {
-    options |= Deserializer::NO_BYTECODE;
+    options.allowBytecode = false;
   }
 
   return Deserializer::fromThrift(L, std::move(decodedObject.output),
-                                  envIdx, options);
+                                  envIdx, std::move(options));
 }
 
 int deserializeFromString(lua_State* L) {

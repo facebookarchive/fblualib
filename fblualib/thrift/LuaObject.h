@@ -69,12 +69,14 @@ inline thpp::ThriftTensorDataType getTensorType(const LuaObject& obj) {
   return getTensorType(obj.value, obj.refs);
 }
 template <class T>
-thpp::Tensor<T> getTensor(const LuaPrimitiveObject& pobj,
-                          const LuaRefList& refs,
-                          bool mayShare = true);
-template <class T> inline thpp::Tensor<T> getTensor(const LuaObject& obj,
-                                                    bool mayShare = true) {
-  return getTensor<T>(obj.value, obj.refs, mayShare);
+thpp::Tensor<T> getTensor(
+    const LuaPrimitiveObject& pobj,
+    const LuaRefList& refs,
+    thpp::SharingMode sharing = thpp::SHARE_IOBUF_MANAGED);
+template <class T> inline thpp::Tensor<T> getTensor(
+    const LuaObject& obj,
+    thpp::SharingMode sharing = thpp::SHARE_IOBUF_MANAGED) {
+  return getTensor<T>(obj.value, obj.refs, sharing);
 }
 
 // Table access
@@ -186,12 +188,14 @@ inline LuaObject make(folly::StringPiece val) {
   return r;
 }
 template <class T>
-LuaPrimitiveObject append(const thpp::Tensor<T>& val, LuaRefList& refs,
-                          bool mayShare = true);
+LuaPrimitiveObject append(
+    const thpp::Tensor<T>& val, LuaRefList& refs,
+    thpp::SharingMode sharing = thpp::SHARE_IOBUF_MANAGED);
 template <class T>
-inline LuaObject make(const thpp::Tensor<T>& val, bool mayShare = true) {
+inline LuaObject make(const thpp::Tensor<T>& val,
+                      thpp::SharingMode sharing = thpp::SHARE_IOBUF_MANAGED) {
   LuaObject r;
-  r.value = append(val, r.refs);
+  r.value = append(val, r.refs, sharing);
   return r;
 }
 

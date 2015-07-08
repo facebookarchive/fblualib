@@ -221,9 +221,9 @@ void Serializer::setInvertedEnv(int invEnvIdx) {
   lua_pop(L_, 1);
 }
 
-Serializer::Serializer(lua_State* L, unsigned int options)
+Serializer::Serializer(lua_State* L, Options options)
   : L_(L),
-    options_(options) {
+    options_(std::move(options)) {
   // Store associated state in registry under key == this:
   // { converted_cache, inverted_env }
   //
@@ -248,10 +248,10 @@ Serializer::~Serializer() {
 }
 
 LuaObject Serializer::toThrift(lua_State* L, int index, int invEnvIdx,
-                               unsigned int options) {
+                               Options options) {
   LuaObject out;
 
-  Serializer serializer(L, options);
+  Serializer serializer(L, std::move(options));
   serializer.setInvertedEnv(invEnvIdx);
   out.value = serializer.serialize(index);
   out.refs = serializer.finish();
@@ -476,7 +476,7 @@ void Serializer::doSerialize(LuaPrimitiveObject& obj, int index,
         XLOG << "Tensor<" #TYPE ">"; \
         ref.__isset.tensorVal = true; \
         tensor->serialize(ref.tensorVal, thpp::ThriftTensorEndianness::NATIVE, \
-                          mayShare()); \
+                          options_.sharing); \
         break; \
       } \
     }
@@ -494,7 +494,8 @@ void Serializer::doSerialize(LuaPrimitiveObject& obj, int index,
         XLOG << "Storage<" #TYPE ">"; \
         ref.__isset.storageVal = true; \
         storage->serialize(ref.storageVal, \
-                           thpp::ThriftTensorEndianness::NATIVE, mayShare()); \
+                           thpp::ThriftTensorEndianness::NATIVE, \
+                           options_.sharing); \
         break; \
       } \
     }
@@ -699,10 +700,10 @@ void Serializer::doSerializeFunction(LuaFunction& obj,
 
 #undef XLOG
 
-Deserializer::Deserializer(lua_State* L, unsigned int options)
+Deserializer::Deserializer(lua_State* L, Options options)
   : L_(L),
     refs_(nullptr),
-    options_(options) {
+    options_(std::move(options)) {
   // Store in the registry a 2-element table: converted cache and
   // env.
   lua_pushlightuserdata(L_, this);  // this
@@ -760,8 +761,8 @@ void Deserializer::finish() {
 }
 
 int Deserializer::fromThrift(lua_State* L, const LuaObject& obj,
-                             int envIdx, unsigned int options) {
-  Deserializer deserializer(L, options);
+                             int envIdx, Options options) {
+  Deserializer deserializer(L, std::move(options));
   deserializer.setEnv(envIdx);
   deserializer.start(&obj.refs);
   return deserializer.deserialize(obj.value);
@@ -864,7 +865,7 @@ void Deserializer::doDeserializeRefs() {
       lua_newtable(L_);
       record();
     } else if (ref.__isset.functionVal) {
-      if (options_ & NO_BYTECODE) {
+      if (!options_.allowBytecode) {
         luaL_error(L_, "Bytecode deserialization disabled");
       }
       XLOG << "function";
@@ -875,7 +876,8 @@ void Deserializer::doDeserializeRefs() {
 #define DESERIALIZE_TENSOR(TYPE, VALUE) \
       case thpp::ThriftTensorDataType::VALUE: \
         XLOG << "Tensor<" #TYPE ">"; \
-        luaPushTensor(L_, thpp::Tensor<TYPE>(ref.tensorVal, mayShare())); \
+        luaPushTensor(L_, thpp::Tensor<TYPE>(ref.tensorVal, \
+                                             options_.sharing)); \
         break;
       DESERIALIZE_TENSOR(unsigned char, BYTE)
       DESERIALIZE_TENSOR(int32_t, INT32)
@@ -892,7 +894,8 @@ void Deserializer::doDeserializeRefs() {
 #define DESERIALIZE_STORAGE(TYPE, VALUE) \
       case thpp::ThriftTensorDataType::VALUE: \
         XLOG << "Storage<" #TYPE ">"; \
-        luaPushStorage(L_, thpp::Storage<TYPE>(ref.storageVal, mayShare())); \
+        luaPushStorage(L_, thpp::Storage<TYPE>(ref.storageVal, \
+                                               options_.sharing)); \
         break;
       DESERIALIZE_STORAGE(unsigned char, BYTE)
       DESERIALIZE_STORAGE(int32_t, INT32)
