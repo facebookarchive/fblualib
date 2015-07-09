@@ -32,7 +32,7 @@ local obj = thrift.from_string(str)
 
 -- from open io.file object
 local f = io.open('/tmp/foo')
-local obj = thrift.from_file(obj)
+local obj = thrift.from_file(f)
 ```
 
 `to_file` writes to the file at the current position of the file pointer,
