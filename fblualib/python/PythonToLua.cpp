@@ -10,6 +10,7 @@
 
 #include "PythonToLua.h"
 #include "NumpyArrayAllocator.h"
+#include "Ref.h"
 
 namespace fblualib {
 namespace python {
@@ -98,7 +99,14 @@ int PythonToLuaConverter::doConvert(lua_State* L, const PyObjectHandle& oh) {
   // protocol and fail at runtime if you try to convert them to float...)
 
   if (obj == Py_None) {                          // None
-    lua_pushnil(L);
+    switch(noneMode_) {
+    case NONE_AS_LUA_NIL:
+      lua_pushnil(L);
+      break;
+    case NONE_AS_LUAPY_NONE:
+      pushOpaqueRef(L, PyObjectHandle(PyObjectHandle::INCREF, Py_None));
+      break;
+    }
   } else if (PyBool_Check(obj)) {                // bool
     lua_pushboolean(L, obj != Py_False);
   } else if (PyInt_Check(obj)) {                 // int

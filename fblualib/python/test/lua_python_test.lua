@@ -19,6 +19,7 @@ local util = require('fb.util')
 function testFundamental()
     assertEquals(true, py.eval('True'))
     assertEquals(false, py.eval('False'))
+
     assertEquals(true, py.eval('a', {a=true}))
     assertEquals(false, py.eval('a', {a=false}))
     assertEquals(nil, py.eval('None'))
@@ -33,6 +34,17 @@ function testFundamental()
     assertEquals('hello', py.eval('a', {a='hello'}))
     assertEquals(true, py.eval('isinstance(a, float)', {a=42}))
     assertEquals(true, py.eval('isinstance(a, bytes)', {a='hello'}))
+
+    -- Eval none
+    assertEquals('hello', py.eval('a', {a='hello'}))
+    assertEquals({a=2,b=py.None}, py.eval_none('{"a": 2, "b": None}'))
+    assertEquals(
+        {a=2,b={c=py.None}},
+        py.eval_none('{"a": 2, "b": {"c": None}}'))
+    -- Round tripping
+    assertEquals(
+        {a=2,b={c=py.None}},
+        py.eval_none('a', {a=py.eval_none('{"a": 2, "b": {"c": None}}')}))
 end
 
 function testSequence()

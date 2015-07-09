@@ -69,12 +69,20 @@ int execPython(lua_State* L) {
   return 0;
 }
 
-int evalPython(lua_State* L) {
+int evalInner(lua_State* L, PythonToLuaConverter::NoneMode noneMode) {
   PythonGuard g;
   PyObjectHandle ret;
   auto ref = getOpaqueRef(L, 1);
-  PythonToLuaConverter converter;
+  PythonToLuaConverter converter(noneMode);
   return converter.convert(L, ref ? ref->obj : doExec(L, Py_eval_input));
+}
+
+int evalPython(lua_State* L) {
+  return evalInner(L, PythonToLuaConverter::NONE_AS_LUA_NIL);
+}
+
+int evalNonePython(lua_State* L) {
+  return evalInner(L, PythonToLuaConverter::NONE_AS_LUAPY_NONE);
 }
 
 int refEvalPython(lua_State* L) {
@@ -162,6 +170,7 @@ int getModule(lua_State* L) {
 const struct luaL_reg pythonFuncs[] = {
   {"exec", execPython},
   {"eval", evalPython},
+  {"eval_none", evalNonePython},
   {"reval", refEvalPython},
   {"ref", getRef},
   {"float", getFloat},
