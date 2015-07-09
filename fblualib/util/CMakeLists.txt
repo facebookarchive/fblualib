@@ -29,24 +29,13 @@ SET(src
   Util.cpp
 )
 
-# I wish I could install the FFI module with LuaRocks's standard installation
-# methods, but LuaRocks can only install shared libraries in package.cpath,
-# and you don't even get to know what the final location is (because files
-# are first installed in a staging directory and then copied from there)
-SET(lib_dir "${CMAKE_INSTALL_PREFIX}/lib/fblualib/util")
+SET(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
 
-ADD_LIBRARY(cpp MODULE ${src})
-TARGET_LINK_LIBRARIES(cpp ${FOLLY_LIBRARIES})
-SET(clib
-  "${lib_dir}/${CMAKE_SHARED_LIBRARY_PREFIX}cpp${CMAKE_SHARED_LIBRARY_SUFFIX}")
+ADD_LIBRARY(fbutil MODULE ${src})
+TARGET_LINK_LIBRARIES(fbutil ${FOLLY_LIBRARIES})
 
-CONFIGURE_FILE(
-  "fb/util/_config.lua.in"
-  "fb/util/_config.lua"
-  @ONLY)
-
-INSTALL(TARGETS cpp
-        LIBRARY DESTINATION "${lib_dir}")
+install(TARGETS fbutil LIBRARY
+  DESTINATION ${ROCKS_LIBDIR})
 
 INSTALL(
   DIRECTORY "fb"

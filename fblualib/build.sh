@@ -25,11 +25,10 @@ make
 sudo make install
 
 rocks="util luaunit complex \
-  ffivector editline trepl debugger mattorch python thrift"
+  ffivector editline trepl debugger mattorch thrift" # python
 version='0.1-1'
 for rock in $rocks; do
   cd $root/$rock
-  # Unfortunately, luarocks doesn't like separating the "build" and
-  # "install" phases, so we have to run as root.
-  sudo luarocks make rockspec/fb$rock-$version.rockspec
+  # first attempt to install without root. if failed, install with root
+  luarocks make rockspec/fb$rock-$version.rockspec || sudo luarocks make rockspec/fb$rock-$version.rockspec
 done

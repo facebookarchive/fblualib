@@ -59,7 +59,6 @@ local ffi = require('ffi')
 local pl = require('pl.import_into')()
 local ok, torch = pcall(require, 'torch')
 if not ok then torch = nil end
-local module_config = require('fb.util._config')
 
 local M = {}
 
@@ -102,11 +101,13 @@ end
 
 -- Iterator
 function Deque:__ipairs()
+   if not self then return function() return nil end end
     return self._iter, self, 0
 end
 
 -- Iterator
 function Deque:__pairs()
+   if not self then return function() return nil end end
     return self:__ipairs()
 end
 
@@ -300,8 +301,11 @@ local function create_temp_dir(prefix)
 end
 M.create_temp_dir = create_temp_dir
 
-
-local util_lib = ffi.load(module_config.clib)
+local lib_path = package.searchpath('libfbutil', package.cpath)
+if not lib_path then
+   lib_path = require('fb.util._config').clib
+end
+local util_lib = ffi.load(lib_path)
 M._clib = util_lib
 
 ffi.cdef([=[
