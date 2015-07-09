@@ -13,6 +13,9 @@ echo This script will install fblualib and all its dependencies.
 echo It has been tested on Ubuntu 13.10 and Ubuntu 14.04, Linux x86_64.
 echo
 
+set -e
+set -x
+
 if [[ $(arch) != 'x86_64' ]]; then
     echo "x86_64 required" >&2
     exit 1
@@ -75,8 +78,8 @@ sudo apt-get install \
 echo
 echo Cloning repositories
 echo
-git clone https://github.com/facebook/folly
-git clone https://github.com/facebook/fbthrift
+git clone -b v0.35.0  --depth 1 https://github.com/facebook/folly.git
+git clone -b v0.24.0  --depth 1 https://github.com/facebook/fbthrift.git
 git clone https://github.com/facebook/thpp
 git clone https://github.com/soumith/fblualib
 
