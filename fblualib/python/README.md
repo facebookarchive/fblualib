@@ -29,7 +29,7 @@ def foo(x):
   return x + 1
 ]=])
 
-print(py.eval('foo(a) + 10'), {a = 42})  -- prints 53
+print(py.eval('foo(a) + 10', {a = 42})) -- prints 53
 ```
 
 There are a few things to note in the example above:
