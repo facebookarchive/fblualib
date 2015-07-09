@@ -92,6 +92,7 @@ autoreconf -ivf
 ./configure
 make
 sudo make install
+sudo ldconfig # reload the lib paths after freshly installed folly. fbthrift needs it.
 
 echo
 echo Building fbthrift
