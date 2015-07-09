@@ -40,7 +40,7 @@ cd $dir
 
 echo Installing required packages
 echo
-sudo apt-get install \
+sudo apt-get install -y \
     git \
     curl \
     wget \
