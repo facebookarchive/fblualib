@@ -72,27 +72,27 @@ void RefMap::copyTo(MapType& map) {
   map = map_;
 }
 
-RefMap luaRefs;
-RefMap pythonRefs;
+RefMap* luaRefs = new RefMap;
+RefMap* pythonRefs = new RefMap;
 
-RefMap::MapType watermarkLuaRefs;
-RefMap::MapType watermarkPythonRefs;
+RefMap::MapType* watermarkLuaRefs = new RefMap::MapType;
+RefMap::MapType* watermarkPythonRefs = new RefMap::MapType;
 
 }  // namespace
 
-void debugAddLuaRef(const void* obj) { luaRefs.add(obj); }
-void debugDeleteLuaRef(const void* obj) { luaRefs.remove(obj); }
-void debugCheckLuaRef(const void* obj) { luaRefs.check(obj); }
-void debugCheckNoLuaRefs() { luaRefs.checkEqual(watermarkLuaRefs); }
+void debugAddLuaRef(const void* obj) { luaRefs->add(obj); }
+void debugDeleteLuaRef(const void* obj) { luaRefs->remove(obj); }
+void debugCheckLuaRef(const void* obj) { luaRefs->check(obj); }
+void debugCheckNoLuaRefs() { luaRefs->checkEqual(*watermarkLuaRefs); }
 
-void debugAddPythonRef(const PyObject* obj) { pythonRefs.add(obj); }
-void debugDeletePythonRef(const PyObject* obj) { pythonRefs.remove(obj); }
-void debugCheckPythonRef(const PyObject* obj) { pythonRefs.check(obj); }
-void debugCheckNoPythonRefs() { pythonRefs.checkEqual(watermarkPythonRefs); }
+void debugAddPythonRef(const PyObject* obj) { pythonRefs->add(obj); }
+void debugDeletePythonRef(const PyObject* obj) { pythonRefs->remove(obj); }
+void debugCheckPythonRef(const PyObject* obj) { pythonRefs->check(obj); }
+void debugCheckNoPythonRefs() { pythonRefs->checkEqual(*watermarkPythonRefs); }
 
 void debugSetWatermark() {
-  luaRefs.copyTo(watermarkLuaRefs);
-  pythonRefs.copyTo(watermarkPythonRefs);
+  luaRefs->copyTo(*watermarkLuaRefs);
+  pythonRefs->copyTo(*watermarkPythonRefs);
 }
 
 void debugCheckNoRefs() {
