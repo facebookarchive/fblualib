@@ -355,6 +355,7 @@ class AtomicVector {
         // Consume the file in a breadth-first fashion; thread 0 is decoding
         // item 0 while thread 1 is decoding item 1. This way we plow through
         // the file in roughly sequential order.
+        Refcount<T> rc;
         for (size_t i = tid; i < sz; i += nThreads) {
           size_t entrySz;
           safe_pread(fd, &entrySz, sizeof(entrySz), directory[i]);
@@ -365,7 +366,9 @@ class AtomicVector {
           }
           folly::ByteRange range(&bytes[0], entrySz);
           try {
-            write(i, Serde<T>::load(&range));
+            auto data = Serde<T>::load(&range);
+            write(i, data);
+            rc.dec(data);
           } catch(std::runtime_error& e) {
             fprintf(stderr, "hmm, could not deserialize: %s\n", e.what());
             fprintf(stderr, "at dir %zd tid %d entry length %zd offset %zd\n",

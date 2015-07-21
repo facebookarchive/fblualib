@@ -46,7 +46,7 @@ template<> struct Serde<T*> {                         \
     auto decoded = cppDecode(sr);                     \
     auto thppTensor = getTensor<Real>(std::move(decoded)); \
     auto retval = thppTensor.moveAsTH();              \
-    /* Caller's job to incref if necessary. */        \
+    /* refcount=1; caller's job to decref. */         \
     return retval;                                    \
   }                                                   \
 }
