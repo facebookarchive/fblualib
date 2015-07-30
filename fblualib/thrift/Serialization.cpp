@@ -685,14 +685,15 @@ void Serializer::doSerializeFunction(LuaFunction& obj,
   folly::IOBufQueue queue;
   int r = lua_dump(L_, luaWriterToIOBuf, &queue);
   if (r != 0) {
-    luaL_error(L_, "lua_dump error %d", r);
+    luaL_error(L_, "lua_dump error %d (serializing a C function?)", r);
   }
   lua_pop(L_, 1);
   obj.bytecode = std::move(*queue.move());
 
-  for (int i = 1; lua_getupvalue(L_, index, i); ++i) {
+  const char* name;
+  for (int i = 1; (name = lua_getupvalue(L_, index, i)) != nullptr; ++i) {
     obj.upvalues.emplace_back();
-    XLOG << "upvalue " << i;
+    XLOG << "upvalue " << i << " (" << name << ")";
     doSerialize(obj.upvalues.back(), -1, ctx, level + 1);
     lua_pop(L_, 1);
   }
@@ -1064,8 +1065,6 @@ void Deserializer::doSetTable(int index, int convertedIdx,
   }
 }
 
-#undef XLOG
-
 namespace {
 const char* luaReaderFromIOBuf(lua_State* L, void* ud, size_t* sz) {
   auto cursor = static_cast<folly::io::Cursor*>(ud);
@@ -1092,12 +1091,16 @@ void Deserializer::doDeserializeFunction(const LuaFunction& obj) {
 void Deserializer::doSetUpvalues(int idx, int convertedIdx,
                                  const LuaFunction& obj) {
   for (int i = 0; i < obj.upvalues.size(); ++i) {
+    XLOG << "upvalue " << i;
     doDeserialize(obj.upvalues[i], convertedIdx, 2);
     auto r = lua_setupvalue(L_, idx, i + 1);
     if (!r) {
       luaL_error(L_, "too many upvalues");
     }
+    XLOG << "upvalue " << i << " name: " << r;
   }
 }
+
+#undef XLOG
 
 }}  // namespaces
