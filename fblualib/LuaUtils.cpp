@@ -11,6 +11,7 @@
 #include <fblualib/LuaUtils.h>
 
 #include <type_traits>
+#include <boost/preprocessor/iteration/local.hpp>
 
 namespace fblualib {
 
@@ -155,5 +156,72 @@ void* loadPointerFromRegistry(lua_State* L, const void* key) {
   return value;
 }
 
-}  // namespaces
+int defaultCFunctionWrapper(lua_State* L, lua_CFunction fn) {
+  try {
+    return (*fn)(L);
+  } catch (const std::exception& e) {
+    luaPush(L, folly::exceptionStr(e));
+    lua_error(L);
+    return 0;  // unreached
+  }
+}
 
+namespace {
+
+void* getLUDUpValue(lua_State* L, int idx) {
+  idx = lua_upvalueindex(idx);
+  DCHECK_EQ(LUA_TLIGHTUSERDATA, lua_type(L, idx));
+  auto r = lua_touserdata(L, idx);
+  DCHECK(r);
+  return r;
+}
+
+template <int N>
+int trampoline(lua_State* L) {
+  auto wrapper = reinterpret_cast<CFunctionWrapper>(getLUDUpValue(L, N + 1));
+  auto fn = reinterpret_cast<lua_CFunction>(getLUDUpValue(L, N + 2));
+  return (*wrapper)(L, fn);
+}
+
+// We reserve 2 upvalues for wrapper and actual function to be called
+#define MAX_UPS (255 - 2)
+
+lua_CFunction gTrampolines[] = {
+#define BOOST_PP_LOCAL_LIMITS (0, MAX_UPS + 1)
+#define BOOST_PP_LOCAL_MACRO(n) &trampoline<n>,
+#include BOOST_PP_LOCAL_ITERATE()
+#undef BOOST_PP_LOCAL_MACRO
+#undef BOOST_PP_LOCAL_LIMITS
+};
+
+}
+
+void pushWrappedCClosure(lua_State* L, lua_CFunction fn, int nups,
+                         CFunctionWrapper wrapper) {
+  // Push one of our wrapper functions instead, with an extra upvalue
+  // indicating the C function to dispatch to.
+  if (nups < 0 || nups > MAX_UPS) {
+    luaL_error(L, "invalid upvalue count");
+  }
+  lua_pushlightuserdata(L, reinterpret_cast<void*>(wrapper));
+  lua_pushlightuserdata(L, reinterpret_cast<void*>(fn));
+  lua_pushcclosure(L, gTrampolines[nups], nups + 2);
+}
+
+void setWrappedFuncs(lua_State* L, const luaL_Reg* funcs, int nups,
+                     CFunctionWrapper wrapper) {
+  // table is at base
+  // upvalues start at base + 1
+  int base = lua_gettop(L) - nups;
+  for (; funcs->name; ++funcs) {
+    // Copy upvalues to the top
+    for (int i = 1; i <= nups; ++i) {
+      lua_pushvalue(L, base + i);
+    }
+    pushWrappedCClosure(L, funcs->func, nups, wrapper);
+    lua_setfield(L, base, funcs->name);
+  }
+  lua_pop(L, nups);
+}
+
+}  // namespaces

@@ -207,9 +207,35 @@ void initLuaEmbedding();
 inline void initLuaEmbedding() { }
 #endif
 
+typedef int (*CFunctionWrapper)(lua_State*, lua_CFunction);
+
+int defaultCFunctionWrapper(lua_State* L, lua_CFunction fn);
+
+// Push a C closure with nups upvalues on the stack. Similar to
+// lua_pushcclosure, but rather than calling fn(L), it calls
+// wrapper(L, fn). The default wrapper will catch C++ exceptions
+// derived from std::exception and rethrow them as Lua errors.
+void pushWrappedCClosure(lua_State* L, lua_CFunction fn,
+                         int nups = 0,
+                         CFunctionWrapper wrapper = &defaultCFunctionWrapper);
+
+// Register the functions in funcs into the table at the top of the stack
+// (below the optional nups upalues). Similar to luaL_setfuncs (5.2+,
+// http://www.lua.org/manual/5.2/manual.html#luaL_setfuncs), but will
+// call wrapper(L, fn) rather than fn(L). Also see pushWrappedCClosure, above.
+//
+// Note that luaL_register is deprecated, but
+//
+// luaL_register(L, nullptr, funcs) === luaL_setfuncs(L, funcs, 0)
+//
+// and so creating modules should be done by creating the module table at
+// the top of the stack followed by setWrappedFuncs(L, funcs);
+void setWrappedFuncs(lua_State* L, const luaL_Reg* funcs,
+                     int nups = 0,
+                     CFunctionWrapper wrapper = &defaultCFunctionWrapper);
+
 }  // namespaces
 
 #include <fblualib/LuaUtils-inl.h>
 
 #endif /* FBLUA_LUAUTILS_H_ */
-

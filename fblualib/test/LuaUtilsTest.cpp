@@ -123,6 +123,119 @@ TEST_F(LuaUtilsTest, Index) {
   EXPECT_EQ(10, lua_tointeger(L, index));
 }
 
+namespace {
+
+class TestException : public std::runtime_error {
+ public:
+  explicit TestException(const std::string& s) : std::runtime_error(s) { }
+};
+
+template <int offset>
+int testFunction(lua_State* L) {
+  auto base = luaGetChecked<int>(L, lua_upvalueindex(1));
+  auto a = luaGetChecked<int>(L, 1);
+  auto b = luaGetChecked<int>(L, 2);
+  auto sum = a + b + base + offset;
+  switch (sum) {
+  case 100:
+    throw TestException("hit 100");
+  case 101:
+    luaL_error(L, "hit 101");
+  }
+  luaPush(L, sum);
+  return 1;
+}
+
+int testWrapper(lua_State* L, lua_CFunction fn) {
+  try {
+    return (*fn)(L);
+  } catch (const TestException& e) {
+    luaL_error(L, "TestException: %s", e.what());
+    return 0;  // unreached
+  } catch (const std::exception& e) {
+    luaL_error(L, "OTHER EXCEPTION: %s", e.what());
+    return 0;  // unreached
+  }
+}
+
+}
+
+TEST_F(LuaUtilsTest, WrappedCFunction) {
+  int base = lua_gettop(L);
+  luaPush(L, 10);
+  pushWrappedCClosure(L, testFunction<0>, 1, testWrapper);
+  int closureIdx = lua_gettop(L);
+  EXPECT_EQ(base + 1, closureIdx);
+
+  lua_pushvalue(L, closureIdx);
+  luaPush(L, 20);
+  luaPush(L, 30);
+  EXPECT_EQ(0, lua_pcall(L, 2, 1, 0));
+  EXPECT_EQ(60, luaGetChecked<int>(L, -1));
+  lua_pop(L, 1);
+
+  lua_pushvalue(L, closureIdx);
+  luaPush(L, 40);
+  luaPush(L, 50);
+  EXPECT_EQ(LUA_ERRRUN, lua_pcall(L, 2, 1, 0));
+  EXPECT_EQ("TestException: hit 100", luaGetChecked<std::string>(L, -1));
+  lua_pop(L, 1);
+
+  lua_pushvalue(L, closureIdx);
+  luaPush(L, 40);
+  luaPush(L, 51);
+  EXPECT_EQ(LUA_ERRRUN, lua_pcall(L, 2, 1, 0));
+  EXPECT_EQ("hit 101", luaGetChecked<std::string>(L, -1));
+  lua_pop(L, 1);
+}
+
+namespace {
+
+const luaL_Reg kFuncs[] = {
+  {"add", &testFunction<0>},
+  {"add1", &testFunction<1>},
+  {nullptr, nullptr},
+};
+
+}  // namespace
+
+TEST_F(LuaUtilsTest, SetWrappedFuncs) {
+  int base = lua_gettop(L);
+  lua_newtable(L);
+  luaPush(L, 10);
+  setWrappedFuncs(L, kFuncs, 1, testWrapper);
+  int tableIdx = lua_gettop(L);
+  EXPECT_EQ(base + 1, tableIdx);
+
+  lua_getfield(L, tableIdx, "add");
+  luaPush(L, 20);
+  luaPush(L, 30);
+  EXPECT_EQ(0, lua_pcall(L, 2, 1, 0));
+  EXPECT_EQ(60, luaGetChecked<int>(L, -1));
+  lua_pop(L, 1);
+
+  lua_getfield(L, tableIdx, "add");
+  luaPush(L, 40);
+  luaPush(L, 50);
+  EXPECT_EQ(LUA_ERRRUN, lua_pcall(L, 2, 1, 0));
+  EXPECT_EQ("TestException: hit 100", luaGetChecked<std::string>(L, -1));
+  lua_pop(L, 1);
+
+  lua_getfield(L, tableIdx, "add");
+  luaPush(L, 40);
+  luaPush(L, 51);
+  EXPECT_EQ(LUA_ERRRUN, lua_pcall(L, 2, 1, 0));
+  EXPECT_EQ("hit 101", luaGetChecked<std::string>(L, -1));
+  lua_pop(L, 1);
+
+  lua_getfield(L, tableIdx, "add1");
+  luaPush(L, 20);
+  luaPush(L, 30);
+  EXPECT_EQ(0, lua_pcall(L, 2, 1, 0));
+  EXPECT_EQ(61, luaGetChecked<int>(L, -1));
+  lua_pop(L, 1);
+}
+
 }}  // namespaces
 
 using namespace fblualib;
