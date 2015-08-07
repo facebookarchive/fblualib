@@ -188,7 +188,6 @@ bool SimpleTestObject::destructorCalled = false;
 
 TEST(SimpleObjectTest, Simple) {
   auto L = GL.get();
-  registerObject<SimpleTestObject>(L);
   auto& obj = pushObject<SimpleTestObject>(L, 42);
   EXPECT_EQ(42, obj.x);
 
@@ -262,10 +261,6 @@ int main(int argc, char *argv[]) {
   GL = luaNewState();
   auto L = GL.get();
   luaL_openlibs(L);
-
-  createMetatable<TestObject>(L);
-  createMetatable<TestObjectIndexOnly>(L);
-  createMetatable<TestObjectMethodsOnly>(L);
 
   return RUN_ALL_TESTS();
 }

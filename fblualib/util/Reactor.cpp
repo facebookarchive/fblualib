@@ -349,8 +349,6 @@ const UserDataMethod<Reactor> Metatable<Reactor>::methods[] = {
 }  // namespace fblualib
 
 extern "C" int LUAOPEN(lua_State* L) {
-  createMetatable<Reactor>(L);
-
   lua_newtable(L);
   luaL_register(L, nullptr, gModuleFuncs);
 

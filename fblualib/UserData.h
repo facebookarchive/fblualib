@@ -52,9 +52,7 @@
 //
 //   }  // namespace fblualib
 //
-// 3. Call createMetatable<T>(L);
-//
-// 4. Use the object. To push one onto the Lua stack, do:
+// 3. Use the object. To push one onto the Lua stack, do:
 //
 //   // Construct an object of type MyClass from args, push it onto the
 //   // Lua stack, and return a reference to it.
@@ -65,12 +63,11 @@
 // actual data.
 //
 // Also in this file, helpers for the case where you only want to use this
-// for lifetime management. You must call registerObject<T> first.
+// for lifetime management.
 //
-// - registerObject(L);
-// - pushObject(L, Args&&... args)
-// - T* getObject(L, index)
-// - T& getObjectChecked(L, index)
+// - pushObject<T>(L, Args&&... args)
+// - T* getObject<T>(L, index)
+// - T& getObjectChecked<T>(L, index)
 
 namespace fblualib {
 
@@ -89,14 +86,8 @@ template <class T> struct Metatable {
   static const UserDataMethod<T> methods[];
 };
 
-// Create (register) a metatable for type T. Leaves the stack unchanged.
-// Internally, the metatable is stored in the registry using the address of
-// Metatable<T>::metamethods as a key.
-// Calling this multiple times is harmless.
-template <class T>
-int createMetatable(lua_State* L);
-
-// Push onto the stack the metatable for type T (or nil if not created).
+// Push onto the stack the metatable for type T, creating it if not yet
+// created.
 template <class T>
 int pushMetatable(lua_State* L);
 
@@ -193,25 +184,11 @@ int registerMethods(lua_State* L, bool methods) {
   return indexMethod;
 }
 
-}  // namespace detail
-
 template <class T>
-int createMetatable(lua_State* L) {
-  // Check if already created.
-  pushMetatable<T>(L);
-  bool exists = !lua_isnil(L, -1);
-  lua_pop(L, 1);
-  if (exists) {
-    return 0;
-  }
-
-  lua_pushlightuserdata(
-      L,
-      const_cast<void*>(static_cast<const void*>(&Metatable<T>::metamethods)));
-
+int doCreateMetatable(lua_State* L) {
   lua_newtable(L);
   auto indexMethod = detail::registerMethods<T>(L, false);  // metamethods
-  // registry_key metatable
+  // metatable
 
   // Add GC method
   lua_pushcfunction(L, &detail::gcUserData<T>);
@@ -229,7 +206,7 @@ int createMetatable(lua_State* L) {
 
     lua_newtable(L);
     detail::registerMethods<T>(L, true);  // methods
-    // registry_key metatable methods
+    // metatable methods
 
     if (indexMethod >= 0) {
       // Both methods and __index. We need to go through a trampoline.
@@ -238,15 +215,25 @@ int createMetatable(lua_State* L) {
       luaPush(L, indexMethod);
       lua_insert(L, -2);
       lua_pushcclosure(L, detail::indexTrampoline<T>, 2);
-      // registry_key metatable trampoline
+      // metatable trampoline
     }
     lua_setfield(L, -2, "__index");
   }
 
-  // registry_key metatable
+  // metatable
+
+  lua_pushlightuserdata(
+      L,
+      const_cast<void*>(static_cast<const void*>(&Metatable<T>::metamethods)));
+  lua_pushvalue(L, -2);
+  // metatable registry_key metatable
   lua_settable(L, LUA_REGISTRYINDEX);
-  return 0;
+
+  // metatable
+  return 1;
 }
+
+}  // namespace detail
 
 template <class T>
 int pushMetatable(lua_State* L) {
@@ -254,6 +241,10 @@ int pushMetatable(lua_State* L) {
       L,
       const_cast<void*>(static_cast<const void*>(&Metatable<T>::metamethods)));
   lua_gettable(L, LUA_REGISTRYINDEX);
+  if (lua_isnil(L, -1)) {
+    lua_pop(L, 1);
+    detail::doCreateMetatable<T>(L);
+  }
   return 1;
 }
 
@@ -314,11 +305,6 @@ const UserDataMethod<detail::ObjectWrapper<T>>
 Metatable<detail::ObjectWrapper<T>>::methods[] = {
   {nullptr, nullptr},
 };
-
-template <class T>
-int registerObject(lua_State* L) {
-  return createMetatable<detail::ObjectWrapper<T>>(L);
-}
 
 template <class T, class... Args>
 T& pushObject(lua_State* L, Args&&... args) {
