@@ -10,6 +10,10 @@
 require('fb.luaunit')
 local future = require('fb.util.future')
 
+local function tsmatch(str, pattern)
+    return string.match(tostring(str), pattern)
+end
+
 function testCallbacksAlreadyCompletedSuccessfully()
     local succ = 0
     local fail = 0
@@ -45,7 +49,7 @@ function testCallbacksAlreadyCompletedWithError()
 
     local ok, result = pcall(function() return f:value() end)
     assertFalse(ok)
-    assertTrue(string.match(result, '10$'))
+    assertTrue(tsmatch(result, '10$'))
 
     assertEquals(0, succ)
     assertEquals(10, fail)
@@ -97,7 +101,7 @@ function testCallbacksCompletionWithError()
     p:set_error(10)
 
     assertTrue(f:has_error())
-    assertTrue(string.match(f:error(), '10$'))
+    assertTrue(tsmatch(f:error(), '10$'))
 
     assertEquals(0, succ)
     assertEquals(10, fail)
@@ -121,7 +125,7 @@ function testMapError()
     local f = p:future():map(function(v) return v + 1 end)
 
     p:set_error(10)
-    assertTrue(string.match(f:error(), '10$'))
+    assertTrue(tsmatch(f:error(), '10$'))
 end
 
 function testMapCallbackError()
@@ -130,7 +134,7 @@ function testMapCallbackError()
     local f = p:future():map(function(v) error('hello') end)
 
     p:set_value(10)
-    assertTrue(string.match(f:error(), 'hello$'))
+    assertTrue(tsmatch(f:error(), 'hello$'))
 end
 
 function testFlatMapSuccessful()
@@ -157,7 +161,7 @@ function testFlatMapError()
     local f = p:future():flat_map(function(v) return p2:future() end)
 
     p:set_error('hello')
-    assertTrue(string.match(f:error(), 'hello$'))
+    assertTrue(tsmatch(f:error(), 'hello$'))
 end
 
 function testFlatMapSecondError()
@@ -170,7 +174,7 @@ function testFlatMapSecondError()
     assertTrue(f:is_pending())
 
     p2:set_error('hello')
-    assertTrue(string.match(f:error(), 'hello$'))
+    assertTrue(tsmatch(f:error(), 'hello$'))
 end
 
 function testFlatMapCallbackError()
@@ -179,7 +183,7 @@ function testFlatMapCallbackError()
     local f = p:future():flat_map(function() error('hello') end)
 
     p:set_value(10)
-    assertTrue(string.match(f:error(), 'hello$'))
+    assertTrue(tsmatch(f:error(), 'hello$'))
 end
 
 function testEnforceSuccessful()
@@ -199,7 +203,7 @@ function testEnforcePredicateFailed()
     local f = p:future():enforce(function(v) return v == 10 end)
 
     p:set_value(20)
-    assertTrue(string.match(f:error(), 'predicate failed$'))
+    assertTrue(tsmatch(f:error(), 'predicate failed$'))
 end
 
 function testEnforceError()
@@ -208,7 +212,7 @@ function testEnforceError()
     local f = p:future():enforce(function(v) return v == 10 end)
 
     p:set_error('hello')
-    assertTrue(string.match(f:error(), 'hello$'))
+    assertTrue(tsmatch(f:error(), 'hello$'))
 end
 
 function testEnforceCallbackError()
@@ -217,7 +221,7 @@ function testEnforceCallbackError()
     local f = p:future():enforce(function() error('hello') end)
 
     p:set_value(10)
-    assertTrue(string.match(f:error(), 'hello$'))
+    assertTrue(tsmatch(f:error(), 'hello$'))
 end
 
 function testAndThenSuccessful()
@@ -240,7 +244,7 @@ function testAndThenError()
     local f = p:future():and_then(function(v) called = v + 1 end)
 
     p:set_error(10)
-    assertTrue(string.match(f:error(), '10$'))
+    assertTrue(tsmatch(f:error(), '10$'))
     assertEquals(nil, called)
 end
 
@@ -250,7 +254,7 @@ function testAndThenCallbackError()
     local f = p:future():and_then(function(v) error('hello') end)
 
     p:set_value(10)
-    assertTrue(string.match(f:error(), 'hello$'))
+    assertTrue(tsmatch(f:error(), 'hello$'))
 end
 
 function testAllSuccessful()
