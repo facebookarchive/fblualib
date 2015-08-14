@@ -123,4 +123,67 @@ function testNested()
     }, msgs)
 end
 
+function testSafeToString()
+    assertEquals('42', eh.safe_tostring(42))
+
+    local foo = {}
+    setmetatable(foo, {__tostring = function() return 'hello' end})
+    assertEquals('hello', eh.safe_tostring(foo))
+
+    setmetatable(foo, {__tostring = function() error('hello', 0) end})
+    assertEquals('(cannot convert to string: hello)',
+                 eh.safe_tostring(foo))
+
+    setmetatable(foo, {__tostring = function() error(foo) end})
+    assertEquals('(cannot convert to string: failed recursively)',
+                 eh.safe_tostring(foo))
+end
+
+function testStructuredErrorHandling()
+    -- string
+    local ok1, result1 = pcall(function() error('foo', 0) end)
+    assertFalse(ok1)
+    assertEquals('foo', result1)
+
+    -- wrapped string
+    local ok2, result2 = xpcall(function() error('foo', 0) end, eh.wrap)
+    assertFalse(ok2)
+    assertEquals('foo', tostring(result2))
+    assertTrue(result2.traceback)
+
+    -- already wrapped when thrown
+    local ok3, result3 = pcall(function() eh.throw('foo', nil, 0) end)
+    assertFalse(ok3)
+    assertEquals('foo', tostring(result3))
+    assertTrue(result3.traceback)
+
+    -- double-wrapping does nothing
+    local ok4, result4 = xpcall(function() eh.throw('foo', nil, 0) end, eh.wrap)
+    assertFalse(ok4)
+    assertEquals('foo', tostring(result4))
+    assertTrue(result4.traceback)
+
+    -- similar to finally() but reimplemented here to show nested errors
+    local function runner(fn, finally, ...)
+        local ok, result = xpcall(fn, eh.wrap, ...)
+        if finally then
+            local okf, resultf = xpcall(finally, eh.wrap)
+            if not okf then
+                eh.throw('finally block threw an error', resultf, 0)
+            end
+        end
+        if not ok then
+            eh.throw('function threw an error', result, 0)
+        end
+        return result
+    end
+
+    local ok5, result5 = xpcall(runner, eh.wrap, function() error('foo', 0) end)
+    assertFalse(ok5)
+    assertEquals('function threw an error', tostring(result5))
+    assertTrue(result5.traceback)
+    assertEquals('foo', tostring(result5.nested_error))
+    assertTrue(result5.nested_error.traceback)
+end
+
 LuaUnit:main()
