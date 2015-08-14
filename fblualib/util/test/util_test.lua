@@ -308,4 +308,37 @@ function testPcallLocked()
     assertEquals(52, result)
 end
 
+function testSplitLines()
+    assertEquals({}, util.splitlines(''))
+    assertEquals({}, util.splitlines('', true))
+    assertEquals({''}, util.splitlines('\n'))
+    assertEquals({'\n'}, util.splitlines('\n', true))
+    assertEquals({'foo'}, util.splitlines('foo'))
+    assertEquals({'foo'}, util.splitlines('foo', true))
+    assertEquals({'foo'}, util.splitlines('foo\n'))
+    assertEquals({'foo\n'}, util.splitlines('foo\n', true))
+    assertEquals({'foo', 'bar'}, util.splitlines('foo\nbar'))
+    assertEquals({'foo\n', 'bar'}, util.splitlines('foo\nbar', true))
+    assertEquals({'foo', 'bar'}, util.splitlines('foo\nbar\n'))
+    assertEquals({'foo\n', 'bar\n'}, util.splitlines('foo\nbar\n', true))
+    assertEquals({'foo', '', 'bar'}, util.splitlines('foo\n\nbar'))
+    assertEquals({'foo\n', '\n', 'bar'}, util.splitlines('foo\n\nbar', true))
+    assertEquals({'foo', '', 'bar'}, util.splitlines('foo\n\nbar\n'))
+    assertEquals({'foo\n', '\n', 'bar\n'},
+                 util.splitlines('foo\n\nbar\n', true))
+    assertEquals({'foo', ''}, util.splitlines('foo\n\n'))
+    assertEquals({'foo\n', '\n'}, util.splitlines('foo\n\n', true))
+end
+
+function testIndentLines()
+    assertEquals('', util.indent_lines('', 'xx'))
+    assertEquals('xx\n', util.indent_lines('\n', 'xx'))
+    assertEquals('xxabc', util.indent_lines('abc', 'xx'))
+    assertEquals('xxabc\n', util.indent_lines('abc\n', 'xx'))
+    assertEquals('xxabc\nxxdef', util.indent_lines('abc\ndef', 'xx'))
+    assertEquals('xxabc\nxxdef\n', util.indent_lines('abc\ndef\n', 'xx'))
+    assertEquals('xxabc\nxx\nxxdef', util.indent_lines('abc\n\ndef', 'xx'))
+    assertEquals('xxabc\nxx\nxxdef\n', util.indent_lines('abc\n\ndef\n', 'xx'))
+end
+
 LuaUnit:main()
