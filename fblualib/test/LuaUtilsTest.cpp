@@ -158,7 +158,19 @@ int testWrapper(lua_State* L, lua_CFunction fn) {
   }
 }
 
+int testStdFunctionWrapper(lua_State* L, LuaStdFunction& fn) {
+  try {
+    return fn(L);
+  } catch (const TestException& e) {
+    luaL_error(L, "TestException: %s", e.what());
+    return 0;  // unreached
+  } catch (const std::exception& e) {
+    luaL_error(L, "OTHER EXCEPTION: %s", e.what());
+    return 0;  // unreached
+  }
 }
+
+}  // namespace
 
 TEST_F(LuaUtilsTest, WrappedCFunction) {
   int base = lua_gettop(L);
@@ -187,6 +199,61 @@ TEST_F(LuaUtilsTest, WrappedCFunction) {
   EXPECT_EQ(LUA_ERRRUN, lua_pcall(L, 2, 1, 0));
   EXPECT_EQ("hit 101", luaGetChecked<std::string>(L, -1));
   lua_pop(L, 1);
+}
+
+TEST_F(LuaUtilsTest, StdFunction) {
+  int foo = 100;
+  int base = lua_gettop(L);
+  luaPush(L, 10);
+  pushStdFunction(L,
+      [foo] (lua_State* L) {
+        int a = foo;
+        a += luaGetChecked<int>(L, 1);
+        a += luaGetChecked<int>(L, lua_upvalueindex(1));
+        luaPush(L, a);
+        return 1;
+      },
+      1);
+  int closureIdx = lua_gettop(L);
+  EXPECT_EQ(base + 1, closureIdx);
+
+  lua_pushvalue(L, closureIdx);
+  luaPush(L, 20);
+  EXPECT_EQ(0, lua_pcall(L, 1, 1, 0));
+  EXPECT_EQ(130, luaGetChecked<int>(L, -1));
+  lua_pop(L, 1);
+}
+
+TEST_F(LuaUtilsTest, WrappedStdFunction) {
+  int foo = 100;
+  int base = lua_gettop(L);
+  luaPush(L, 10);
+  pushWrappedStdFunction(L,
+      [foo] (lua_State* L) {
+        int a = foo;
+        a += luaGetChecked<int>(L, 1);
+        a += luaGetChecked<int>(L, lua_upvalueindex(1));
+        if (a == 100) {
+          throw TestException("hit 100");
+        }
+        luaPush(L, a);
+        return 1;
+      },
+      1,
+      testStdFunctionWrapper);
+  int closureIdx = lua_gettop(L);
+  EXPECT_EQ(base + 1, closureIdx);
+
+  lua_pushvalue(L, closureIdx);
+  luaPush(L, 20);
+  EXPECT_EQ(0, lua_pcall(L, 1, 1, 0));
+  EXPECT_EQ(130, luaGetChecked<int>(L, -1));
+  lua_pop(L, 1);
+
+  lua_pushvalue(L, closureIdx);
+  luaPush(L, -10);
+  EXPECT_EQ(LUA_ERRRUN, lua_pcall(L, 1, 1, 0));
+  EXPECT_EQ("TestException: hit 100", luaGetChecked<std::string>(L, -1));
 }
 
 namespace {

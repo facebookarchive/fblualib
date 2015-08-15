@@ -207,8 +207,13 @@ void initLuaEmbedding();
 inline void initLuaEmbedding() { }
 #endif
 
-typedef int (*CFunctionWrapper)(lua_State*, lua_CFunction);
+typedef std::function<int(lua_State*)> LuaStdFunction;
 
+// Push a std::function object closure; similar to lua_pushcclosure, but
+// takes a std::function object rather than a lua_CFunction.
+void pushStdFunction(lua_State* L, LuaStdFunction fn, int nups = 0);
+
+typedef int (*CFunctionWrapper)(lua_State*, lua_CFunction);
 int defaultCFunctionWrapper(lua_State* L, lua_CFunction fn);
 
 // Push a C closure with nups upvalues on the stack. Similar to
@@ -218,6 +223,14 @@ int defaultCFunctionWrapper(lua_State* L, lua_CFunction fn);
 void pushWrappedCClosure(lua_State* L, lua_CFunction fn,
                          int nups = 0,
                          CFunctionWrapper wrapper = &defaultCFunctionWrapper);
+
+typedef int (*StdFunctionWrapper)(lua_State*, LuaStdFunction&);
+int defaultStdFunctionWrapper(lua_State* L, LuaStdFunction& fn);
+
+void pushWrappedStdFunction(
+    lua_State* L, LuaStdFunction fn,
+    int nups = 0,
+    StdFunctionWrapper wrapper = &defaultStdFunctionWrapper);
 
 // Register the functions in funcs into the table at the top of the stack
 // (below the optional nups upalues). Similar to luaL_setfuncs (5.2+,

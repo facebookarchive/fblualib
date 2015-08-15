@@ -12,6 +12,7 @@
 
 #include <type_traits>
 #include <boost/preprocessor/iteration/local.hpp>
+#include <fblualib/UserData.h>
 
 namespace fblualib {
 
@@ -166,6 +167,16 @@ int defaultCFunctionWrapper(lua_State* L, lua_CFunction fn) {
   }
 }
 
+int defaultStdFunctionWrapper(lua_State* L, LuaStdFunction& fn) {
+  try {
+    return fn(L);
+  } catch  (const std::exception& e) {
+    luaPush(L, folly::exceptionStr(e));
+    lua_error(L);
+    return 0;  // unreached
+  }
+}
+
 namespace {
 
 void* getLUDUpValue(lua_State* L, int idx) {
@@ -177,35 +188,84 @@ void* getLUDUpValue(lua_State* L, int idx) {
 }
 
 template <int N>
-int trampoline(lua_State* L) {
+int wrappedCClosureTrampoline(lua_State* L) {
   auto wrapper = reinterpret_cast<CFunctionWrapper>(getLUDUpValue(L, N + 1));
   auto fn = reinterpret_cast<lua_CFunction>(getLUDUpValue(L, N + 2));
   return (*wrapper)(L, fn);
 }
 
 // We reserve 2 upvalues for wrapper and actual function to be called
-#define MAX_UPS (255 - 2)
+#define MAX_UPS 255
 
-lua_CFunction gTrampolines[] = {
-#define BOOST_PP_LOCAL_LIMITS (0, MAX_UPS + 1)
-#define BOOST_PP_LOCAL_MACRO(n) &trampoline<n>,
+lua_CFunction gWrappedCClosureTrampolines[] = {
+#define BOOST_PP_LOCAL_LIMITS (0, MAX_UPS - 1)
+#define BOOST_PP_LOCAL_MACRO(n) &wrappedCClosureTrampoline<n>,
 #include BOOST_PP_LOCAL_ITERATE()
 #undef BOOST_PP_LOCAL_MACRO
 #undef BOOST_PP_LOCAL_LIMITS
 };
 
+template <int N>
+int wrappedStdFunctionTrampoline(lua_State* L) {
+  auto wrapper = reinterpret_cast<StdFunctionWrapper>(getLUDUpValue(L, N + 1));
+  auto& fn = getObjectChecked<LuaStdFunction>(L, lua_upvalueindex(N + 2));
+  return (*wrapper)(L, fn);
 }
+
+lua_CFunction gWrappedStdFunctionTrampolines[] = {
+#define BOOST_PP_LOCAL_LIMITS (0, MAX_UPS - 1)
+#define BOOST_PP_LOCAL_MACRO(n) &wrappedStdFunctionTrampoline<n>,
+#include BOOST_PP_LOCAL_ITERATE()
+#undef BOOST_PP_LOCAL_MACRO
+#undef BOOST_PP_LOCAL_LIMITS
+};
+
+template <int N>
+int stdFunctionTrampoline(lua_State* L) {
+  auto& fn = getObjectChecked<LuaStdFunction>(L, lua_upvalueindex(N + 1));
+  return fn(L);
+}
+
+lua_CFunction gStdFunctionTrampolines[] = {
+#define BOOST_PP_LOCAL_LIMITS (0, MAX_UPS)
+#define BOOST_PP_LOCAL_MACRO(n) &stdFunctionTrampoline<n>,
+#include BOOST_PP_LOCAL_ITERATE()
+#undef BOOST_PP_LOCAL_MACRO
+#undef BOOST_PP_LOCAL_LIMITS
+};
+
+}  // namespace
 
 void pushWrappedCClosure(lua_State* L, lua_CFunction fn, int nups,
                          CFunctionWrapper wrapper) {
-  // Push one of our wrapper functions instead, with an extra upvalue
-  // indicating the C function to dispatch to.
-  if (nups < 0 || nups > MAX_UPS) {
+  // Two upvalues: one for the wrapper, one for the actual function to dispatch
+  // to.
+  if (nups < 0 || nups > MAX_UPS - 2) {
     luaL_error(L, "invalid upvalue count");
   }
   lua_pushlightuserdata(L, reinterpret_cast<void*>(wrapper));
   lua_pushlightuserdata(L, reinterpret_cast<void*>(fn));
-  lua_pushcclosure(L, gTrampolines[nups], nups + 2);
+  lua_pushcclosure(L, gWrappedCClosureTrampolines[nups], nups + 2);
+}
+
+void pushWrappedStdFunction(lua_State* L, LuaStdFunction fn, int nups,
+                            StdFunctionWrapper wrapper) {
+  if (nups < 0 || nups > MAX_UPS - 2) {
+    luaL_error(L, "invalid upvalue count");
+  }
+
+  lua_pushlightuserdata(L, reinterpret_cast<void*>(wrapper));
+  pushObject<LuaStdFunction>(L, std::move(fn));
+  lua_pushcclosure(L, gWrappedStdFunctionTrampolines[nups], nups + 2);
+}
+
+void pushStdFunction(lua_State* L, LuaStdFunction fn, int nups) {
+  if (nups < 0 || nups > MAX_UPS - 1) {
+    luaL_error(L, "invalid upvalue count");
+  }
+
+  pushObject<LuaStdFunction>(L, std::move(fn));
+  lua_pushcclosure(L, gStdFunctionTrampolines[nups], nups + 1);
 }
 
 void setWrappedFuncs(lua_State* L, const luaL_Reg* funcs, int nups,
