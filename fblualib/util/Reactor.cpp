@@ -45,6 +45,7 @@ class Reactor : public folly::Executor {
   // Return a lightuserdata object that is a pointer to the corresponding
   // folly::Executor.
   int luaGetExecutor(lua_State* L);
+  int luaGetEventBase(lua_State* L);
 
  private:
   int doLoop();
@@ -316,6 +317,11 @@ int Reactor::luaGetExecutor(lua_State* L) {
   return 1;
 }
 
+int Reactor::luaGetEventBase(lua_State* L) {
+  lua_pushlightuserdata(L, eb_.get());
+  return 1;
+}
+
 int luaNew(lua_State* L) {
   pushUserData<Reactor>(L, L);
   return 1;
@@ -343,6 +349,7 @@ const UserDataMethod<Reactor> Metatable<Reactor>::methods[] = {
   {"remove_callback", &Reactor::luaRemoveCallback},
   {"loop", &Reactor::luaLoop},
   {"get_executor", &Reactor::luaGetExecutor},
+  {"get_event_base", &Reactor::luaGetEventBase},
   {nullptr, nullptr},
 };
 
