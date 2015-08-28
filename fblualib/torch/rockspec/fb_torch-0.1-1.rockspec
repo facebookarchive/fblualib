@@ -7,7 +7,7 @@
 --  of patent rights can be found in the PATENTS file in the same directory.
 --
 
-package = 'fbutil'
+package = 'fb_torch'
 version = '0.1-1'
 source = {
     url = 'https://github.com/facebook/fblualib',
@@ -23,12 +23,9 @@ description = {
 supported_platforms = {
     'unix',
 }
-dependencies = {
-    'penlight >= 1.3.1',
-}
 source = {
     url = 'https://github.com/facebook/fblualib',
-    dir = 'fblualib/util',
+    dir = 'fblualib/torch',
 }
 build = {
     type = 'command',

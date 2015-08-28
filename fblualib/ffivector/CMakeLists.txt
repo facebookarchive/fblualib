@@ -29,24 +29,12 @@ SET(src
   FFIVector.cpp
 )
 
-# I wish I could install the FFI module with LuaRocks's standard installation
-# methods, but LuaRocks can only install shared libraries in package.cpath,
-# and you don't even get to know what the final location is (because files
-# are first installed in a staging directory and then copied from there)
-SET(lib_dir "${CMAKE_INSTALL_PREFIX}/lib/fblualib/ffivector")
+ADD_LIBRARY(fbffivector MODULE ${src})
+TARGET_LINK_LIBRARIES(fbffivector ${FOLLY_LIBRARIES})
 
-ADD_LIBRARY(cpp MODULE ${src})
-TARGET_LINK_LIBRARIES(cpp ${FOLLY_LIBRARIES})
-SET(clib
-  "${lib_dir}/${CMAKE_SHARED_LIBRARY_PREFIX}cpp${CMAKE_SHARED_LIBRARY_SUFFIX}")
 
-CONFIGURE_FILE(
-  "fb/ffivector/_config.lua.in"
-  "fb/ffivector/_config.lua"
-  @ONLY)
-
-INSTALL(TARGETS cpp
-        LIBRARY DESTINATION "${lib_dir}")
+INSTALL(TARGETS fbffivector
+        LIBRARY DESTINATION "${ROCKS_LIBDIR}")
 
 INSTALL(
   DIRECTORY "fb"

@@ -14,6 +14,11 @@
 #include <folly/Random.h>
 #include <thpp/Tensor.h>
 
+#ifdef FB_INTERNAL
+#else
+#define LUAOPEN(x) luaopen_async_rng(x)
+#endif
+
 using namespace thpp;
 using namespace fblualib;
 
