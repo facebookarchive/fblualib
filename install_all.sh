@@ -49,7 +49,7 @@ sudo apt-get install -y \
     autoconf \
     autoconf-archive \
     libtool \
-    libboost1.55-all-dev \
+    libboost-all-dev \
     libevent-dev \
     libdouble-conversion-dev \
     libgoogle-glog-dev \
