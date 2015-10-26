@@ -41,7 +41,7 @@ from the current file pointer and advances the file pointer past the serialized
 data (that is, the format is self-delimiting, and you can serialize multiple
 objects to the same file without any special framing).
 
-Serialization functions (`to_file' and `to_string') accept an additional
+Serialization functions (`to_file` and `to_string`) accept an additional
 argument that indicates the codec to use when compressing the data, if any.
 Valid values are in the `thrift.codec` table: `NONE` (no compression, default),
 `LZ4`, `SNAPPY`, `ZLIB`, `LZMA2` (but some might not be available if the
