@@ -17,12 +17,13 @@ class TestObject {
   static bool destructorCalled;
 
   explicit TestObject(int x) : x(x), y(0) { }
-  ~TestObject() { destructorCalled = true; }
+  virtual ~TestObject() { destructorCalled = true; }
 
   int luaLen(lua_State* L);
   int luaValue(lua_State* L);
   int luaIndex(lua_State* L);
   int luaNewIndex(lua_State* L);
+  virtual int luaFoo(lua_State* L);
 
   int x;
   int y;
@@ -58,6 +59,11 @@ int TestObject::luaNewIndex(lua_State* L) {
   return 1;
 }
 
+int TestObject::luaFoo(lua_State* L) {
+  lua_pushstring(L, "base");
+  return 1;
+}
+
 bool TestObject::destructorCalled = false;
 
 TEST(UserDataTest, Destruction) {
@@ -66,7 +72,7 @@ TEST(UserDataTest, Destruction) {
   auto& obj = pushUserData<TestObject>(L, 42);
   EXPECT_EQ(42, obj.x);
   auto p = getUserData<TestObject>(L, -1);
-  EXPECT_EQ(p, &obj);
+  EXPECT_EQ(&obj, p);
   EXPECT_FALSE(TestObject::destructorCalled);
   lua_pop(L, 1);
   lua_gc(L, LUA_GCCOLLECT, 0);
@@ -153,6 +159,42 @@ TEST(SimpleObjectTest, Simple) {
   EXPECT_TRUE(SimpleTestObject::destructorCalled);
 }
 
+namespace {
+
+class TestDerived1 : public TestObject {
+ public:
+  static bool derivedDestructorCalled;
+
+  TestDerived1(int xv, int zv) : TestObject(xv), z(zv) { }
+
+  ~TestDerived1() { derivedDestructorCalled = true; }
+
+  int luaFoo(lua_State* L) override;
+  int luaBar(lua_State* L);
+  int luaValue(lua_State* L);
+
+  int z;
+};
+
+int TestDerived1::luaBar(lua_State* L) {
+  lua_pushstring(L, "bar");
+  return 1;
+}
+
+int TestDerived1::luaFoo(lua_State* L) {
+  lua_pushstring(L, "derived");
+  return 1;
+}
+
+int TestDerived1::luaValue(lua_State* L) {
+  lua_pushinteger(L, z);
+  return 1;
+}
+
+bool TestDerived1::derivedDestructorCalled = false;
+
+}  // namespace
+
 }}  // namespaces
 
 using namespace fblualib;
@@ -160,11 +202,63 @@ using namespace fblualib::test;
 
 namespace fblualib {
 
+template <> struct BaseClass<TestDerived1> {
+  typedef TestObject type;
+};
+
+}  // namespace fblualib
+
+namespace fblualib { namespace test {
+
+TEST(InheritanceTest, Destruction) {
+  TestObject::destructorCalled = false;
+  TestDerived1::destructorCalled = false;
+  auto L = GL.get();
+  auto& obj = pushUserData<TestDerived1>(L, 10, 20);
+  EXPECT_EQ(10, obj.x);
+  EXPECT_EQ(20, obj.z);
+  auto p = getUserData<TestDerived1>(L, -1);
+  EXPECT_EQ(&obj, p);
+  auto q = getUserData<TestObject>(L, -1);
+  EXPECT_EQ(static_cast<TestObject*>(&obj), q);
+  lua_pop(L, 1);
+  lua_gc(L, LUA_GCCOLLECT, 0);
+  lua_gc(L, LUA_GCCOLLECT, 0);
+  EXPECT_TRUE(TestDerived1::destructorCalled);
+  EXPECT_TRUE(TestObject::destructorCalled);
+}
+
+}}  // namespaces
+
+namespace fblualib {
+
+TEST(InheritanceTest, Methods) {
+  auto L = GL.get();
+
+  const char chunk[] =
+    "return function(obj)\n"
+    "  return #obj, obj:value(), obj:foo(), obj:bar()\n"
+    "end\n";
+
+  ASSERT_EQ(0, luaL_loadstring(L, chunk));
+  ASSERT_EQ(0, lua_pcall(L, 0, 1, 0))
+    << luaGetChecked<folly::StringPiece>(L, -1);
+  pushUserData<TestDerived1>(L, 100, 200);
+  ASSERT_EQ(0, lua_pcall(L, 1, 4, 0))
+    << luaGetChecked<folly::StringPiece>(L, -1);
+
+  EXPECT_EQ(10, luaGetChecked<int>(L, -4));
+  EXPECT_EQ(100, luaGetChecked<int>(L, -3));  // calls base method!
+  EXPECT_EQ("derived", luaGetChecked<std::string>(L, -2));  // virtual
+  EXPECT_EQ("bar", luaGetChecked<std::string>(L, -1));
+}
+
 template <>
 const UserDataMethod<TestObject> Metatable<TestObject>::methods[] = {
   {"__len", &TestObject::luaLen},
   {"__index", &TestObject::luaIndex},
   {"__newindex", &TestObject::luaNewIndex},
+  {"foo", &TestObject::luaFoo},
   {"value", &TestObject::luaValue},
   {nullptr, nullptr},
 };
@@ -173,6 +267,12 @@ template <>
 const UserDataMethod<TestObjectMethodsOnly>
 Metatable<TestObjectMethodsOnly>::methods[] = {
   {"value", &TestObjectMethodsOnly::luaValue},
+  {nullptr, nullptr},
+};
+
+template <>
+const UserDataMethod<TestDerived1> Metatable<TestDerived1>::methods[] = {
+  {"bar", &TestDerived1::luaBar},
   {nullptr, nullptr},
 };
 

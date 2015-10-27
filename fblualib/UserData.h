@@ -47,7 +47,25 @@
 //
 //   }  // namespace fblualib
 //
-// 3. Use the object. To push one onto the Lua stack, do:
+// 3. (Optional) If your class has a base class, you may declare this
+// relationship between Lua objects as well. The derived class will inherit
+// methods and metamethods from the parent, and getUserData<Base>(L, index)
+// will work with an object of the derived type.
+//
+// You do this by specializing *at the place where your class is defined*
+// (before you use any of the getUserData... etc functions)
+//
+//   namespace fblualib {
+//
+//   template <> struct BaseClass<MyDerived> {
+//     typedef MyBase type;
+//   };
+//
+//   }  // namespace fblualib
+//
+// Note that MyBase must actually be a base class of MyDerived.
+//
+// 4. Use the object. To push one onto the Lua stack, do:
 //
 //   // Construct an object of type MyClass from args, push it onto the
 //   // Lua stack, and return a reference to it.
@@ -78,6 +96,10 @@ struct UserDataMethod {
 
 template <class T> struct Metatable {
   static const UserDataMethod<T> methods[];
+};
+
+template <class T> struct BaseClass {
+  typedef void type;
 };
 
 // Push onto the stack the metatable for type T, creating it if not yet
@@ -135,68 +157,88 @@ int callUserDataMethod(lua_State* L) {
   return (obj.*method)(L);
 }
 
-// Upvalues:
-// 1 = desired __index function (as per callUserDataMethod)
-// 2 = methods table
-//
-// Called as __index, so arguments:
-// 1 = object
-// 2 = key
-template <class T>
-int indexTrampoline(lua_State* L) {
-  lua_pushvalue(L, 2);
-  lua_gettable(L, lua_upvalueindex(2));
-  if (!lua_isnil(L, -1)) {
-    return 1;  // found it in methods table, done
-  }
-  lua_pop(L, 1);
-  return callUserDataMethod<T>(L);
-}
+const char* const kIndexHandler = "_index_handler_";
 
 template <class T>
-int registerMethods(lua_State* L) {
+void registerMethods(lua_State* L) {
   auto table = Metatable<T>::methods;
 
-  int indexMethod = -1;
+  // metatable methods
   for (int i = 0; table->name; ++table, ++i) {
-    luaPush(L, table->name);
+    auto name =
+      strcmp(table->name, "__index") ?
+      table->name :
+      kIndexHandler;
+    luaPush(L, name);
     luaPush(L, i);
     lua_pushcclosure(L, callUserDataMethod<T>, 1);
-    lua_settable(L, -3);
-    if (indexMethod == -1 && !strcmp(table->name, "__index")) {
-      indexMethod = i;
-    }
+    // If it starts with __, register in the metatable, otherwise in the
+    // normal methods table.
+    lua_settable(L, strncmp(name, "__", 2) ? -3 : -4);
   }
-  return indexMethod;
+
+  // Point from metatable to methods table
+  lua_pushvalue(L, -1);
+  lua_setfield(L, -3, "_methods");
 }
+
+template <class Base, class T>
+int castToBase(lua_State* L) {
+  lua_pushlightuserdata(
+      L,
+      static_cast<Base*>(static_cast<T*>(lua_touserdata(L, 1))));
+  return 1;
+}
+
+int indexTrampoline(lua_State* L);
+void doRegisterBase(lua_State* L, lua_CFunction castFunc);
+
+template <class T>
+typename std::enable_if<
+  std::is_base_of<typename BaseClass<T>::type, T>::value>::type
+registerBase(lua_State* L) {
+  typedef typename BaseClass<T>::type Base;
+  // derived_mt derived_methods
+  pushMetatable<Base>(L);
+  doRegisterBase(L, &castToBase<Base, T>);
+}
+
+template <class T>
+typename std::enable_if<
+  std::is_same<typename BaseClass<T>::type, void>::value>::type
+registerBase(lua_State* L) { }
 
 template <class T>
 int doCreateMetatable(lua_State* L) {
-  lua_newtable(L);
-  auto indexMethod = detail::registerMethods<T>(L);
-  // metatable
+  lua_newtable(L);  // metatable
+  lua_newtable(L);  // methods
+
+  registerBase<T>(L);
+  registerMethods<T>(L);
+  // metatable methods
 
   // Add GC method
-  lua_pushcfunction(L, &detail::gcUserData<T>);
-  lua_setfield(L, -2, "__gc");
+  lua_pushcfunction(L, &gcUserData<T>);
+  lua_setfield(L, -3, "__gc");
 
   // If we have an __index metamethod, we need to go through a trampoline
   // that dispatches to either the methods table or the __index metamethod.
-  // Otherwise, set __index to itself on the metatable.
+  // Otherwise, set __index to the methods table.
 
-  lua_pushvalue(L, -1);
-  // metatable metatable
-  if (indexMethod >= 0) {
+  // metatable methods
+  lua_getfield(L, -1, kIndexHandler);
+  if (!lua_isnil(L, -1)) {
+    // metatable methods index_handler
     // Both methods and __index. We need to go through a trampoline.
-    // set index as upvalue #1
-    // set metatable as upvalue #2
-    luaPush(L, indexMethod);
-    lua_insert(L, -2);
-    lua_pushcclosure(L, detail::indexTrampoline<T>, 2);
+    // set methods as upvalue #1
+    // set index as upvalue #2
+    lua_pushcclosure(L, indexTrampoline, 2);
     // metatable trampoline
+  } else {
+    lua_pop(L, 1);
   }
 
-  // metatable <trampoline_or_metatable>
+  // metatable <trampoline_or_methods>
   lua_setfield(L, -2, "__index");
 
   // metatable
@@ -211,6 +253,8 @@ int doCreateMetatable(lua_State* L) {
   // metatable
   return 1;
 }
+
+void* findClass(lua_State* L, void* ptr);
 
 }  // namespace detail
 
@@ -229,15 +273,16 @@ int pushMetatable(lua_State* L) {
 
 template <class T>
 T* getUserData(lua_State* L, int index) {
-  auto ptr = static_cast<T*>(lua_touserdata(L, index));
+  index = luaRealIndex(L, index);
+  auto ptr = lua_touserdata(L, index);
   if (!ptr) {
     return nullptr;  // not userdata
   }
-  lua_getmetatable(L, index);
+
   pushMetatable<T>(L);
-  bool ok = lua_rawequal(L, -1, -2);
-  lua_pop(L, 2);
-  return ok ? ptr : nullptr;
+  lua_getmetatable(L, index);
+
+  return static_cast<T*>(detail::findClass(L, ptr));
 }
 
 template <class T>
