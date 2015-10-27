@@ -118,6 +118,14 @@ int runFunc(lua_State* L) {
 }  // namespace
 
 void Reactor::add(folly::Func func) {
+  if (!eb_) {
+    // We're trying to add callbacks recursively during destruction.
+    // This all stems from the fact that EventBase lets you do such horrible
+    // things. There's absolutely nothing good we can do here, so we'll
+    // do exactly what EventBase does -- ignore.
+    return;
+  }
+
   // We can't run the callback directly from the EventBase, because we
   // want Reactor to be reentrant; func may call back into Lua, which
   // may call loop() again, and EventBase doesn't like that. So we'll
