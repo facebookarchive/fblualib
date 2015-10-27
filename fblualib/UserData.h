@@ -23,14 +23,14 @@
 //     int luaFoo(lua_State* L);
 //   };
 //
-// 2. Register your metamethods and methods, by defining members of
+// 2. Register your metamethods and methods, by defining a member of
 // ::fblualib::Metatable<MyClass>:
 //
 //   namespace fblualib {
 //
 //   template <>
-//   const UserDataMethod<MyClass> Metatable<MyClass>::metamethods = {
-//     // Add metamethods here.
+//   const UserDataMethod<MyClass> Metatable<MyClass>::methods = {
+//     // Add methods and metamethods here.
 //     //
 //     // __gc will automatically be added to call the destructor.
 //     //
@@ -38,15 +38,10 @@
 //
 //     {"__len", &MyClass::luaLen},
 //     // etc
-//     {nullptr, nullptr}
-//   };
-//
-//   template <>
-//   const UserDataMethod<MyClass> Metatable<MyClass>::methods = {
-//     // Add methods here.
 //
 //     {"foo", &MyClass::luaFoo},
 //     // etc
+//
 //     {nullptr, nullptr}
 //   };
 //
@@ -82,7 +77,6 @@ struct UserDataMethod {
 // arguments start at Lua stack index 2.
 
 template <class T> struct Metatable {
-  static const UserDataMethod<T> metamethods[];
   static const UserDataMethod<T> methods[];
 };
 
@@ -132,19 +126,12 @@ int gcUserData(lua_State* L) {
   return 0;
 }
 
-template <class T>
-const UserDataMethod<T>* getMethodTable(bool methods) {
-  return methods ? Metatable<T>::methods : Metatable<T>::metamethods;
-}
-
-// Upvalue 1 is an int encoded as follows:
-// (index << 1) + k, where k is 0 for the metamethods table and 1
-// for the methods table, and index is the index in that table.
+// Upvalue 1 is the index of the method in the method table.
 template <class T>
 int callUserDataMethod(lua_State* L) {
   auto& obj = getUserDataChecked<T>(L, 1);
   auto index = luaGetChecked<int>(L, lua_upvalueindex(1));
-  auto method = getMethodTable<T>(index & 1)[index >> 1].method;
+  auto method = Metatable<T>::methods[index].method;
   return (obj.*method)(L);
 }
 
@@ -167,18 +154,17 @@ int indexTrampoline(lua_State* L) {
 }
 
 template <class T>
-int registerMethods(lua_State* L, bool methods) {
-  auto k = int(methods);
-  auto table = getMethodTable<T>(methods);
+int registerMethods(lua_State* L) {
+  auto table = Metatable<T>::methods;
 
   int indexMethod = -1;
-  for (; table->name; ++table, k += 2) {
+  for (int i = 0; table->name; ++table, ++i) {
     luaPush(L, table->name);
-    luaPush(L, k);
+    luaPush(L, i);
     lua_pushcclosure(L, callUserDataMethod<T>, 1);
     lua_settable(L, -3);
     if (indexMethod == -1 && !strcmp(table->name, "__index")) {
-      indexMethod = k;
+      indexMethod = i;
     }
   }
   return indexMethod;
@@ -187,7 +173,7 @@ int registerMethods(lua_State* L, bool methods) {
 template <class T>
 int doCreateMetatable(lua_State* L) {
   lua_newtable(L);
-  auto indexMethod = detail::registerMethods<T>(L, false);  // metamethods
+  auto indexMethod = detail::registerMethods<T>(L);
   // metatable
 
   // Add GC method
@@ -196,35 +182,28 @@ int doCreateMetatable(lua_State* L) {
 
   // If we have an __index metamethod, we need to go through a trampoline
   // that dispatches to either the methods table or the __index metamethod.
+  // Otherwise, set __index to itself on the metatable.
 
-  // If there's no methods table, we have nothing to do. We'll obey
-  // an __index metamethod if you have one, and we'll revert to the
-  // default behavior if you don't.
-
-  if (Metatable<T>::methods[0].name) {
-    // We have methods.
-
-    lua_newtable(L);
-    detail::registerMethods<T>(L, true);  // methods
-    // metatable methods
-
-    if (indexMethod >= 0) {
-      // Both methods and __index. We need to go through a trampoline.
-      // set index as upvalue #1
-      // set "methods" as upvalue #2
-      luaPush(L, indexMethod);
-      lua_insert(L, -2);
-      lua_pushcclosure(L, detail::indexTrampoline<T>, 2);
-      // metatable trampoline
-    }
-    lua_setfield(L, -2, "__index");
+  lua_pushvalue(L, -1);
+  // metatable metatable
+  if (indexMethod >= 0) {
+    // Both methods and __index. We need to go through a trampoline.
+    // set index as upvalue #1
+    // set metatable as upvalue #2
+    luaPush(L, indexMethod);
+    lua_insert(L, -2);
+    lua_pushcclosure(L, detail::indexTrampoline<T>, 2);
+    // metatable trampoline
   }
+
+  // metatable <trampoline_or_metatable>
+  lua_setfield(L, -2, "__index");
 
   // metatable
 
   lua_pushlightuserdata(
       L,
-      const_cast<void*>(static_cast<const void*>(&Metatable<T>::metamethods)));
+      const_cast<void*>(static_cast<const void*>(&Metatable<T>::methods)));
   lua_pushvalue(L, -2);
   // metatable registry_key metatable
   lua_settable(L, LUA_REGISTRYINDEX);
@@ -239,7 +218,7 @@ template <class T>
 int pushMetatable(lua_State* L) {
   lua_pushlightuserdata(
       L,
-      const_cast<void*>(static_cast<const void*>(&Metatable<T>::metamethods)));
+      const_cast<void*>(static_cast<const void*>(&Metatable<T>::methods)));
   lua_gettable(L, LUA_REGISTRYINDEX);
   if (lua_isnil(L, -1)) {
     lua_pop(L, 1);
@@ -290,14 +269,7 @@ struct ObjectWrapper {
 }  // namespace detail
 
 template <class T> struct Metatable<detail::ObjectWrapper<T>> {
-  static const UserDataMethod<detail::ObjectWrapper<T>> metamethods[];
   static const UserDataMethod<detail::ObjectWrapper<T>> methods[];
-};
-
-template <class T>
-const UserDataMethod<detail::ObjectWrapper<T>>
-Metatable<detail::ObjectWrapper<T>>::metamethods[] = {
-  {nullptr, nullptr},
 };
 
 template <class T>

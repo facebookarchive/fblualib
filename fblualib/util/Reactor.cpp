@@ -337,11 +337,6 @@ const luaL_Reg gModuleFuncs[] = {
 namespace fblualib {
 
 template <>
-const UserDataMethod<Reactor> Metatable<Reactor>::metamethods[] = {
-  {nullptr, nullptr},
-};
-
-template <>
 const UserDataMethod<Reactor> Metatable<Reactor>::methods[] = {
   {"add_callback", &Reactor::luaAddCallback},
   {"add_callback_delayed", &Reactor::luaAddCallbackDelayed},
