@@ -29,7 +29,7 @@
 //   namespace fblualib {
 //
 //   template <>
-//   const UserDataMethod<MyClass> Metatable<MyClass>::methods = {
+//   const UserDataMethod<MyClass> Metatable<MyClass>::methods[] = {
 //     // Add methods and metamethods here.
 //     //
 //     // __gc will automatically be added to call the destructor.
