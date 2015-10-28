@@ -144,9 +144,16 @@ FILE* luaDecodeFILE(lua_State* L, int index);
 
 // Ensure the Lua stack index is real (positive)
 inline int luaRealIndex(lua_State* L, int index) {
-  int r = index < 0 ? lua_gettop(L) + index + 1 : index;
-  DCHECK(r > 0 && r <= lua_gettop(L)) << r;
-  return r;
+  if (index > 0 || index <= LUA_REGISTRYINDEX) {
+    // TODO(tudorb): This assumes that all pseudo-indices are <=
+    // LUA_REGISTRYINDEX, but that's always true.
+    // Replace with lua_absindex when switching to Lua 5.2+.
+    return index;
+  }
+  DCHECK_NE(index, 0);
+  index += lua_gettop(L) + 1;
+  DCHECK(index > 0 && index <= lua_gettop(L)) << index;
+  return index;
 }
 
 // Helper functions to store and load C pointers (lightuserdata) in the

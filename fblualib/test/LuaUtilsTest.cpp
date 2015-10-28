@@ -121,6 +121,12 @@ TEST_F(LuaUtilsTest, Index) {
   int index = luaRealIndex(L, -2);
   EXPECT_LT(0, index);
   EXPECT_EQ(10, lua_tointeger(L, index));
+
+  // pseudo-indices are left alone
+  EXPECT_EQ(LUA_REGISTRYINDEX, luaRealIndex(L, LUA_REGISTRYINDEX));
+  EXPECT_EQ(LUA_GLOBALSINDEX, luaRealIndex(L, LUA_GLOBALSINDEX));
+  EXPECT_EQ(lua_upvalueindex(1), luaRealIndex(L, lua_upvalueindex(1)));
+  EXPECT_EQ(lua_upvalueindex(255), luaRealIndex(L, lua_upvalueindex(255)));
 }
 
 namespace {
