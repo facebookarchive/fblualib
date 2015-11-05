@@ -251,19 +251,8 @@ function testIsList()
     assertFalse(util.is_list(t))
 end
 
-function testRelativeModule()
-    local rel = util.relative_module
-
-    assertEquals('foo.baz', rel('foo.bar', 'baz'))
-    assertEquals('foo.bar.baz', rel('foo.bar', 'baz', 0))
-    assertEquals('baz', rel('foo.bar', 'baz', 2))
-    assertEquals('baz', rel('foo.bar', 'baz', 3))
-
-    assertEquals('baz', rel('foo.init', 'baz'))
-    assertEquals('foo.baz', rel('foo.init', 'baz', 0))
-
-    assertEquals('baz', rel('foo', 'baz'))
-    assertEquals('foo.baz', rel('foo', 'baz', 0))
+function testImport()
+    assertEquals(1111, util.import('.imports'))
 end
 
 function testPcallOnce()
