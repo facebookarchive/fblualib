@@ -330,4 +330,18 @@ function testIndentLines()
     assertEquals('xxabc\nxx\nxxdef\n', util.indent_lines('abc\n\ndef\n', 'xx'))
 end
 
+function testSetenv()
+    local var = 'FBLUALIB_UTIL_TEST_VAR'
+    util.unsetenv(var)
+    assertEquals(nil, os.getenv(var))
+    util.setenv(var, 'hello')
+    assertEquals('hello', os.getenv(var))
+    util.setenv(var, 'world')  -- no overwrite
+    assertEquals('hello', os.getenv(var))
+    util.setenv(var, 'world', true)  -- overwrite
+    assertEquals('world', os.getenv(var))
+    util.unsetenv(var)
+    assertEquals(nil, os.getenv(var))
+end
+
 LuaUnit:main()
