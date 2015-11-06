@@ -14,6 +14,7 @@ LuaStatePtr GL;
 
 class TestObject {
  public:
+  static bool gcCalled;
   static bool destructorCalled;
 
   explicit TestObject(int x) : x(x), y(0) { }
@@ -23,6 +24,7 @@ class TestObject {
   int luaValue(lua_State* L);
   int luaIndex(lua_State* L);
   int luaNewIndex(lua_State* L);
+  int luaGC(lua_State* L);
   virtual int luaFoo(lua_State* L);
 
   int x;
@@ -64,19 +66,28 @@ int TestObject::luaFoo(lua_State* L) {
   return 1;
 }
 
+int TestObject::luaGC(lua_State* L) {
+  gcCalled = true;
+  return 0;
+}
+
 bool TestObject::destructorCalled = false;
+bool TestObject::gcCalled = false;
 
 TEST(UserDataTest, Destruction) {
   TestObject::destructorCalled = false;
+  TestObject::gcCalled = false;
   auto L = GL.get();
   auto& obj = pushUserData<TestObject>(L, 42);
   EXPECT_EQ(42, obj.x);
   auto p = getUserData<TestObject>(L, -1);
   EXPECT_EQ(&obj, p);
+  EXPECT_FALSE(TestObject::gcCalled);
   EXPECT_FALSE(TestObject::destructorCalled);
   lua_pop(L, 1);
   lua_gc(L, LUA_GCCOLLECT, 0);
   lua_gc(L, LUA_GCCOLLECT, 0);
+  EXPECT_TRUE(TestObject::gcCalled);
   EXPECT_TRUE(TestObject::destructorCalled);
 }
 
@@ -258,6 +269,7 @@ const UserDataMethod<TestObject> Metatable<TestObject>::methods[] = {
   {"__len", &TestObject::luaLen},
   {"__index", &TestObject::luaIndex},
   {"__newindex", &TestObject::luaNewIndex},
+  {"__gc", &TestObject::luaGC},
   {"foo", &TestObject::luaFoo},
   {"value", &TestObject::luaValue},
   {nullptr, nullptr},

@@ -143,6 +143,12 @@ namespace detail {
 
 template <class T>
 int gcUserData(lua_State* L) {
+  // Call user-specified __gc method
+  if (!lua_isnoneornil(L, lua_upvalueindex(1))) {
+    lua_pushvalue(L, lua_upvalueindex(1));
+    lua_pushvalue(L, 1);
+    lua_call(L, 1, 0);
+  }
   auto& obj = getUserDataChecked<T>(L, 1);
   obj.~T();
   return 0;
@@ -158,6 +164,7 @@ int callUserDataMethod(lua_State* L) {
 }
 
 const char* const kIndexHandler = "_index_handler_";
+const char* const kGCHandler = "_gc_handler_";
 
 template <class T>
 void registerMethods(lua_State* L) {
@@ -165,10 +172,12 @@ void registerMethods(lua_State* L) {
 
   // metatable methods
   for (int i = 0; table->name; ++table, ++i) {
-    auto name =
-      strcmp(table->name, "__index") ?
-      table->name :
-      kIndexHandler;
+    auto name = table->name;
+    if (!strcmp(name, "__index")) {
+      name = kIndexHandler;
+    } else if (!strcmp(name, "__gc")) {
+      name = kGCHandler;
+    }
     luaPush(L, name);
     luaPush(L, i);
     lua_pushcclosure(L, callUserDataMethod<T>, 1);
@@ -218,7 +227,8 @@ int doCreateMetatable(lua_State* L) {
   // metatable methods
 
   // Add GC method
-  lua_pushcfunction(L, &gcUserData<T>);
+  lua_getfield(L, -1, kGCHandler);
+  lua_pushcclosure(L, &gcUserData<T>, 1);
   lua_setfield(L, -3, "__gc");
 
   // If we have an __index metamethod, we need to go through a trampoline
