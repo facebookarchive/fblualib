@@ -274,7 +274,7 @@ struct LuaOp<
 
 template <class T>
 inline void luaPush(lua_State* L, T&& obj) {
-  detail::LuaOp<typename std::decay<T>::type>::push(L, obj);
+  detail::LuaOp<typename std::decay<T>::type>::push(L, std::forward<T>(obj));
 }
 
 template <class T>
