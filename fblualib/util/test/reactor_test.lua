@@ -64,4 +64,44 @@ function testErrorPropagation()
     assertTrue(string.match(err, 'hello$'))
 end
 
+function testCoroutines()
+    local done = false
+    local r = reactor.Reactor()
+
+    local function loop_until_done()
+        while not done do
+            r:loop()
+        end
+    end
+
+    local function terminate_loop()
+        r:run(function() done = true end)
+    end
+
+    local function coroutine_func()
+        -- First, scheduled from main and looping in coroutine
+        loop_until_done()
+        coroutine.yield(1)
+
+        -- Second, scheduled from coroutine and looping in main
+        terminate_loop()
+        return 2
+    end
+
+    local c = coroutine.wrap(coroutine_func)
+
+    -- First, scheduled from main and looping in coroutine
+    terminate_loop()
+    assertFalse(done)
+    assertEquals(1, c())
+    assertTrue(done)
+    done = false
+
+    -- Second, scheduled from coroutine and looping in main
+    assertEquals(2, c())
+    assertFalse(done)
+    loop_until_done()
+    assertTrue(done)
+end
+
 LuaUnit:main()
