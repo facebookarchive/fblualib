@@ -41,7 +41,8 @@ TEST(PromiseTest, SuccessfulFulfillment) {
   // await reactor future
   folly::via(executor)
     .then(
-        [L, &promise] () {
+        [&promise] () {
+          auto L = loopingState().L;
           luaPush(L, 42);
           luaPush(L, 100);
           promise.setValue(L, 2);
@@ -66,7 +67,8 @@ TEST(PromiseTest, ErrorFulfillment) {
   // await reactor promise
   folly::via(executor)
     .then(
-        [L, &promise] () {
+        [&promise] () {
+          auto L = loopingState().L;
           promise.setErrorFrom(L, "hello");
         });
   int r = lua_pcall(L, 2, 0, 0);

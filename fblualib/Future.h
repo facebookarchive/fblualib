@@ -14,6 +14,7 @@
 #include <lua.hpp>
 
 #include <fblualib/LuaUtils.h>
+#include <fblualib/Reactor.h>
 #include <folly/String.h>
 
 namespace fblualib {
@@ -27,10 +28,14 @@ namespace fblualib {
  * (by calling its get_executor() method) and schedule promise fulfillment
  * in that executor, then Lua code can wait for the corresponding futures
  * to complete using the reactor's await() method.
+ *
+ * DO NOT CAPTURE THE lua_State* IN THE FUNCTIONS THAT YOU SCHEDULE IN THE
+ * REACTOR'S EXECUTOR. Use loopingState().L instead. See <fblualib/Reactor.h>
+ * for more details.
  */
 class Promise {
  public:
-  Promise() : L_(nullptr), key_(0) { }
+  Promise() : key_(0) { }
 
   /**
    * Create a promise, leave the associated future on the stack, and
@@ -86,13 +91,11 @@ class Promise {
   }
 
  private:
-  Promise(lua_State* L, uint64_t key)
-    : L_(L), key_(key) { }
+  explicit Promise(uint64_t key);
 
   void validate(lua_State* L);
   void callPromiseMethod(lua_State* L, const char* method, int n);
 
-  lua_State* L_;
   uint64_t key_;
 };
 
