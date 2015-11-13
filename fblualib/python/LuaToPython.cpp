@@ -110,7 +110,7 @@ PyObjectHandle LuaToPythonConverter::convert(lua_State* L, int index,
     { \
       auto tensor = luaGetTensor<TYPE>(L, index); \
       if (tensor) { \
-        obj = convertTensor<TYPE>(L, *tensor, NUMPY_TYPE); \
+        obj = convertTensor<TYPE>(L, **tensor, NUMPY_TYPE); \
         break; \
       } \
     }

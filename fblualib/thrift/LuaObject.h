@@ -69,11 +69,11 @@ inline thpp::ThriftTensorDataType getTensorType(const LuaObject& obj) {
   return getTensorType(obj.value, obj.refs);
 }
 template <class T>
-thpp::Tensor<T> getTensor(
+thpp::TensorPtr<thpp::Tensor<T>> getTensor(
     const LuaPrimitiveObject& pobj,
     const LuaRefList& refs,
     thpp::SharingMode sharing = thpp::SHARE_IOBUF_MANAGED);
-template <class T> inline thpp::Tensor<T> getTensor(
+template <class T> inline typename thpp::Tensor<T>::Ptr getTensor(
     const LuaObject& obj,
     thpp::SharingMode sharing = thpp::SHARE_IOBUF_MANAGED) {
   return getTensor<T>(obj.value, obj.refs, sharing);

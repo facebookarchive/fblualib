@@ -100,6 +100,78 @@ TEST_F(LuaUtilsTest, PushStorage) {
   }
 }
 
+TEST_F(LuaUtilsTest, TensorPtrPush) {
+  ASSERT_EQ(
+      0,
+      luaL_loadstring(
+          L,
+          "require('torch')\n"
+          "local t1, t2 = ...\n"
+          "return t1:sum(), t2:sum()\n"));
+
+  auto t = thpp::Tensor<float>::makePtr({4});
+  t->fill(0);
+
+  luaPush(L, t);
+  t->resize({5});
+
+  luaPush(L, *t);
+  t->resize({6});
+
+  t->fill(1);
+
+  lua_call(L, 2, 2);
+  EXPECT_EQ(6, lua_tointeger(L, -2));
+  EXPECT_EQ(5, lua_tointeger(L, -1));
+  lua_pop(L, 2);
+}
+
+TEST_F(LuaUtilsTest, TensorPtrGet) {
+  ASSERT_EQ(
+      0,
+      luaL_loadstring(
+          L,
+          "local torch = require('torch')\n"
+          "G_tensor = torch.FloatTensor(4):fill(2)\n"
+          "return G_tensor\n"));
+  lua_call(L, 0, 1);
+
+  // TensorPtr operations refer to the same object
+  auto t1 = luaGetChecked<thpp::Tensor<float>::Ptr>(L, -1);
+  EXPECT_EQ(4, t1->size());
+
+  t1->resize({10});
+  EXPECT_EQ(10, t1->size());
+  t1->fill(1);
+
+  auto t2 = luaGetChecked<thpp::Tensor<float>::Ptr>(L, -1);
+  EXPECT_EQ(10, t2->size());
+
+  t2->resize({20});
+  EXPECT_EQ(20, t1->size());
+  EXPECT_EQ(20, t2->size());
+  t2->fill(2);
+
+  // Tensor (not Ptr) operations copy metadata
+  auto t3 = luaGetChecked<thpp::Tensor<float>>(L, -1);
+  EXPECT_EQ(20, t3.size());
+
+  t3.resize({30});
+  EXPECT_EQ(30, t3.size());
+  EXPECT_EQ(20, t1->size());
+  EXPECT_EQ(20, t2->size());
+  t3.fill(3);
+
+  lua_getglobal(L, "G_tensor");
+  auto t4 = luaGetChecked<thpp::Tensor<float>::Ptr>(L, -1);
+  EXPECT_EQ(20, t4->size());
+  EXPECT_EQ(60, t4->sumall());
+
+  lua_pushnil(L);
+  lua_setglobal(L, "G_tensor");
+  lua_pop(L, 2);
+}
+
 namespace {
 char kRegistryKey;
 }  // namespace

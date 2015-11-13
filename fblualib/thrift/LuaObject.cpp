@@ -74,20 +74,20 @@ thpp::ThriftTensorDataType getTensorType(const LuaPrimitiveObject& pobj,
 }
 
 template <class T>
-thpp::Tensor<T> getTensor(const LuaPrimitiveObject& pobj,
-                          const LuaRefList& refs,
-                          thpp::SharingMode sharing) {
+thpp::TensorPtr<thpp::Tensor<T>> getTensor(
+    const LuaPrimitiveObject& pobj, const LuaRefList& refs,
+    thpp::SharingMode sharing) {
   auto& ref = getRef(pobj, refs);
   if (!ref.__isset.tensorVal) {
     throw std::invalid_argument("LuaObject of wrong type");
   }
-  auto tensor = thpp::Tensor<T>(ref.tensorVal, sharing);
+  auto tensor = thpp::Tensor<T>::makePtr(ref.tensorVal, sharing);
   return tensor;
 }
 
 #define X(T) \
-  template thpp::Tensor<T> getTensor(const LuaPrimitiveObject&, \
-                                     const LuaRefList&, thpp::SharingMode);
+  template thpp::TensorPtr<thpp::Tensor<T>> getTensor( \
+      const LuaPrimitiveObject&, const LuaRefList&, thpp::SharingMode);
 X(unsigned char)
 X(int32_t)
 X(int64_t)

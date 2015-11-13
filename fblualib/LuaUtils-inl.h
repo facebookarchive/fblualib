@@ -83,43 +83,49 @@ T luaGetFieldIfNumberChecked(lua_State* L, int ud, const char* field,
 }
 
 template <class T>
-folly::Optional<thpp::Tensor<T>> luaGetTensor(lua_State* L, int ud) {
+folly::Optional<typename thpp::Tensor<T>::Ptr> luaGetTensor(
+    lua_State* L, int ud) {
   auto p = static_cast<typename thpp::Tensor<T>::THType*>(
       luaT_toudata(L, ud, thpp::Tensor<T>::kLuaTypeName));
-  folly::Optional<thpp::Tensor<T>> opt;
+  folly::Optional<typename thpp::Tensor<T>::Ptr> opt;
   if (p) {
-    opt = thpp::Tensor<T>(p, thpp::TensorMustAlias());
+    opt.emplace(p);
   }
   return opt;
 }
 
 template <class T>
-thpp::Tensor<T> luaGetTensorChecked(lua_State* L, int ud) {
+typename thpp::Tensor<T>::Ptr luaGetTensorChecked(lua_State* L, int ud) {
   auto p = static_cast<typename thpp::Tensor<T>::THType*>(
       luaT_toudata(L, ud, thpp::Tensor<T>::kLuaTypeName));
   if (!p) {
     luaL_error(L, "Not a valid tensor");
   }
-  return thpp::Tensor<T>(p, thpp::TensorMustAlias());
+  return typename thpp::Tensor<T>::Ptr(p);
 }
 
 template <class T>
-folly::Optional<thpp::Tensor<T>> luaGetFieldIfTensor(
+folly::Optional<typename thpp::Tensor<T>::Ptr> luaGetFieldIfTensor(
     lua_State* L, int ud, const char* field) {
   detail::pushField(L, ud, field);
   return luaGetTensor<T>(L, -1);
 }
 
 template <class T>
-thpp::Tensor<T> luaGetFieldIfTensorChecked(lua_State* L, int ud,
-                                           const char* field) {
+typename thpp::Tensor<T>::Ptr luaGetFieldIfTensorChecked(
+    lua_State* L, int ud, const char* field) {
   detail::pushFieldChecked(L, ud, field);
   return luaGetTensorChecked<T>(L, -1);
 }
 
 template <class T>
-void luaPushTensor(lua_State* L, thpp::Tensor<T> tensor) {
+void luaPushTensor(lua_State* L, thpp::TensorPtr<thpp::Tensor<T>> tensor) {
   luaT_pushudata(L, tensor.moveAsTH(), thpp::Tensor<T>::kLuaTypeName);
+}
+
+template <class T>
+void luaPushTensor(lua_State* L, const thpp::Tensor<T>& tensor) {
+  luaPushTensor<T>(L, tensor.copyPtr());
 }
 
 template <class T>
@@ -254,7 +260,7 @@ template <class T>
 struct LuaOp<
   T,
   typename std::enable_if<
-    (thpp::IsTensor<T>::value || thpp::IsStorage<T>::value)>::type>
+    (thpp::IsTensorPtr<T>::value || thpp::IsStorage<T>::value)>::type>
   : public LuaOpBase<T, LuaOp<T>> {
   inline static void push(lua_State* L, T value) {
     luaT_pushudata(L, value.moveAsTH(), T::kLuaTypeName);
@@ -264,7 +270,25 @@ struct LuaOp<
         luaT_toudata(L, index, T::kLuaTypeName));
     folly::Optional<T> opt;
     if (p) {
-      opt = T(p);
+      opt.emplace(p);
+    }
+    return opt;
+  }
+};
+
+template <class T>
+struct LuaOp<
+  T,
+  typename std::enable_if<thpp::IsTensor<T>::value>::type>
+  : public LuaOpBase<T, LuaOp<T>> {
+  inline static void push(lua_State* L, const T& value) {
+    LuaOp<typename T::Ptr>::push(L, value.copyPtr());
+  }
+  inline static folly::Optional<T> get(lua_State* L, int index) {
+    folly::Optional<T> opt;
+    auto p = LuaOp<typename T::Ptr>::get(L, index);
+    if (p) {
+      opt.emplace(**p);
     }
     return opt;
   }

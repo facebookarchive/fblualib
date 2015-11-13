@@ -475,8 +475,9 @@ void Serializer::doSerialize(LuaPrimitiveObject& obj, int index,
       if (tensor) { \
         XLOG << "Tensor<" #TYPE ">"; \
         ref.__isset.tensorVal = true; \
-        tensor->serialize(ref.tensorVal, thpp::ThriftTensorEndianness::NATIVE, \
-                          options_.sharing); \
+        (*tensor)->serialize(ref.tensorVal, \
+                             thpp::ThriftTensorEndianness::NATIVE, \
+                             options_.sharing); \
         break; \
       } \
     }

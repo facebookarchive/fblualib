@@ -38,7 +38,8 @@ int writeString(lua_State* L) {
 }
 
 int writeTensor(lua_State* L) {
-  return pushAsString(L, make(luaGetTensorChecked<double>(L, 1)));
+  auto p = luaGetTensorChecked<double>(L, 1);
+  return pushAsString(L, make(*p));
 }
 
 LuaObject getFromString(lua_State* L, int index) {

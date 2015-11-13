@@ -160,7 +160,7 @@ void saveTensorAtIndex(lua_State* L, int idx, mat_t* fp, const char* name) {
 #define X(tname, type) { \
     auto tensor = luaGetTensor<type>(L, idx); \
     if (tensor) { \
-      saveTensor(L, *tensor, fp, name, MAT_C_##tname, MAT_T_##tname); \
+      saveTensor(L, **tensor, fp, name, MAT_C_##tname, MAT_T_##tname); \
       return; \
     } \
   }

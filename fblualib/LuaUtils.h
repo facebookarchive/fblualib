@@ -82,19 +82,23 @@ bool luaGetFieldIfBooleanChecked(
 
 // Retrieve tensor
 template <class NT>
-folly::Optional<thpp::Tensor<NT>> luaGetTensor(lua_State* L, int ud);
+folly::Optional<typename thpp::Tensor<NT>::Ptr>
+luaGetTensor(lua_State* L, int ud);
 template <class NT>
-thpp::Tensor<NT> luaGetTensorChecked(lua_State* L, int ud);
+typename thpp::Tensor<NT>::Ptr luaGetTensorChecked(lua_State* L, int ud);
 template <class NT>
-folly::Optional<thpp::Tensor<NT>> luaGetFieldIfTensor(
+folly::Optional<typename thpp::Tensor<NT>::Ptr> luaGetFieldIfTensor(
     lua_State* L, int ud, const char* field);
 template <class NT>
-thpp::Tensor<NT> luaGetFieldIfTensorChecked(lua_State* L, int ud,
-                                            const char* field);
+typename thpp::Tensor<NT>::Ptr luaGetFieldIfTensorChecked(lua_State* L, int ud,
+                                                          const char* field);
 
 // Push a tensor onto the stack
 template <class NT>
-void luaPushTensor(lua_State* L, thpp::Tensor<NT> tensor);
+void luaPushTensor(lua_State* L, thpp::TensorPtr<thpp::Tensor<NT>> tensor);
+
+template <class NT>
+void luaPushTensor(lua_State* L, const thpp::Tensor<NT>& tensor);
 
 // Retrieve storage
 template <class NT>
