@@ -226,6 +226,8 @@ PythonInitializer::PythonInitializer() {
   }
 }
 
+std::mutex gPythonInitMutex;
+
 }  // namespace
 
 extern "C" int LUAOPEN(lua_State* L) {
@@ -237,13 +239,18 @@ extern "C" int LUAOPEN(lua_State* L) {
   lua_newtable(L);
   luaL_register(L, nullptr, pythonFuncs);
 
-  initRef(L);
-  initLuaToPython(L);
-  initPythonToLua(L);
+  {
+    // numpy's import_array() doesn't appear to be thread-safe...
 
-  // Initialization finished. Any Python references created so far are there
-  // to stay until the module is unloaded.
-  debugSetWatermark();
+    std::lock_guard<std::mutex> lock(gPythonInitMutex);
+    initRef(L);
+    initLuaToPython(L);
+    initPythonToLua(L);
+
+    // Initialization finished. Any Python references created so far are there
+    // to stay until the module is unloaded.
+    debugSetWatermark();
+  }
 
   return 1;
 }
