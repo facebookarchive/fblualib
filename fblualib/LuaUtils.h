@@ -42,6 +42,7 @@ folly::Optional<folly::StringPiece> luaGetString(lua_State* L, int ud,
 folly::StringPiece luaGetStringChecked(lua_State* L, int ud,
                                        bool strict=false);
 folly::Optional<folly::StringPiece> luaGetFieldIfString(lua_State* L, int ud,
+                                                        const char* field,
                                                         bool strict=false);
 folly::StringPiece luaGetFieldIfStringChecked(lua_State* L, int ud,
                                               const char* field,
