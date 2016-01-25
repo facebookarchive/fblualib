@@ -21,14 +21,14 @@ deq:push_back(20)
 deq:push_back(30)
 print(deq[1])     -- prints 10
 print(deq[3])     -- prints 30
-print(deq:first)  -- prints 1; the first element is at stable index 1
-print(deq:last)   -- prints 3; the last element is at stable index 3
+print(deq.first)  -- prints 1; the first element is at stable index 1
+print(deq.last)   -- prints 3; the last element is at stable index 3
 deq:pop_front()
 print(deq[1])     -- prints 20
 print(deq[2])     -- prints 30
 print(deq:get_stable(2))  -- prints 20
-print(deq:first)  -- prints 2
-print(deq:last)   -- prints 3
+print(deq.first)  -- prints 2
+print(deq.last)   -- prints 3
 ```
 
 ### `util.set_default`: set default values on a table
