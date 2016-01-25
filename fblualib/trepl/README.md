@@ -13,17 +13,17 @@ behavior can be changed by the value of the `TORCH_COLOR` environment variable:
 Usage: to run the default REPL:
 
 ```lua
-local repl = require('fb.repl')
-repl.repl()
+local trepl = require('fb.trepl')
+trepl.repl()
 ```
 
-(from the command line, try `luajit -e "require('fb.repl').repl()"`)
+(from the command line, try `luajit -e "require('fb.trepl').repl()"`)
 
 You may create additional REPLs that do not share state with the main REPL
 (if any) -- useful if your program needs to accept arbitrary Lua input
 and evaluate it:
 
 ```lua
-local loop = repl.make_repl()
+local loop = trepl.make_repl()
 loop()
 ```
