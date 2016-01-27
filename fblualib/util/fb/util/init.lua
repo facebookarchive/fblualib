@@ -214,7 +214,7 @@ function Deque:__eq(other)
 end
 
 -- Lookup
-function Deque:__index(idx, ...)
+function Deque:__index(idx)
     if type(idx) == 'string' then  -- method lookup
         return rawget(Deque, idx)
     end
@@ -229,8 +229,7 @@ function Deque:__newindex(idx, value)
     self.list[idx + self.first - 1] = value
 end
 
-function Deque:__call(...)
-    assert(self == Deque)
+local function new_deque(...)
     local obj = {}
     -- Do this before setmetatable, so that initialization (self.first, etc)
     -- doesn't go through __newindex
@@ -239,7 +238,8 @@ function Deque:__call(...)
     return obj
 end
 
-setmetatable(Deque, Deque)
+setmetatable(Deque, {__call = new_deque})
+
 M.Deque = Deque
 
 
