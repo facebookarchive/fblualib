@@ -344,4 +344,129 @@ function testSetenv()
     assertEquals(nil, os.getenv(var))
 end
 
+local function test_utf8(s, ...)
+    local i = 1
+    for c, err in util.utf8_iter(s, 1, true) do
+        local expected = select(i, ...)
+        if c == false then
+            assertEquals('Invalid UTF-8: ' .. expected, err)
+        else
+            assertEquals(expected, c)
+        end
+        i = i + 1
+    end
+    assertEquals(nil, select(i, ...))
+end
+
+function testUTF8()
+    test_utf8(
+        'f\xc3\xa7 \xe4\xb8\x82!\xf0\x9f\x92\xa9',
+        string.byte('f'),
+        0xe7,
+        string.byte(' '),
+        0x4e02,
+        string.byte('!'),
+        0x1f4a9)
+
+    test_utf8('')
+
+    -- Stress test examples from
+    -- https://www.cl.cam.ac.uk/~mgk25/ucs/examples/UTF-8-test.txt
+
+    test_utf8(
+        '\x00\xc2\x80\xe0\xa0\x80' ..
+        '\xf0\x90\x80\x80' ..
+        '\xf4\x90\x80\x80' ..
+        '\xf8\x88\x80\x80\x80' ..
+        '\xfc\x84\x80\x80\x80\x80q',
+        0,
+        0x80,
+        0x800,
+        0x10000,
+        'past end of Unicode range',
+        'sequence too long (5 bytes)',
+        'sequence too long (6 bytes)',
+        string.byte('q'))
+
+    test_utf8(
+        '\x7f\xdf\xbf\xef\xbf\xbf' ..
+        '\xf4\x8f\xbf\xbf' ..
+        '\xf7\xbf\xbf\xbf' ..
+        '\xfb\xbf\xbf\xbf\xbf' ..
+        '\xfd\xbf\xbf\xbf\xbf\xbfq',
+        0x7f,
+        0x7ff,
+        0xffff,
+        0x10ffff,
+        'past end of Unicode range',
+        'sequence too long (5 bytes)',
+        'sequence too long (6 bytes)',
+        string.byte('q'))
+
+    test_utf8(
+        '\x80\xbfq\xbf\x80q',
+        'continuation byte at beginning of sequence',
+        'continuation byte at beginning of sequence',
+        string.byte('q'),
+        'continuation byte at beginning of sequence',
+        'continuation byte at beginning of sequence',
+        string.byte('q'))
+
+    test_utf8(
+        '\xc0a\xdfb\xe0c\xefd\xf0e\xf7f\xf8g\xfbh\xfci\xfdj',
+        'non-continuation byte inside sequence',
+        string.byte('a'),
+        'non-continuation byte inside sequence',
+        string.byte('b'),
+        'non-continuation byte inside sequence',
+        string.byte('c'),
+        'non-continuation byte inside sequence',
+        string.byte('d'),
+        'non-continuation byte inside sequence',
+        string.byte('e'),
+        'non-continuation byte inside sequence',
+        string.byte('f'),
+        'non-continuation byte inside sequence',
+        string.byte('g'),
+        'non-continuation byte inside sequence',
+        string.byte('h'),
+        'non-continuation byte inside sequence',
+        string.byte('i'),
+        'non-continuation byte inside sequence',
+        string.byte('j'))
+
+    test_utf8(
+        '\xe0\x80a\xf0\x80b\xf0\x80\x80c',
+        'non-continuation byte inside sequence',
+        string.byte('a'),
+        'non-continuation byte inside sequence',
+        string.byte('b'),
+        'non-continuation byte inside sequence',
+        string.byte('c'))
+
+    test_utf8(
+        '\xc0',
+        'string ends mid-sequence')
+
+    test_utf8(
+        '\xe0\x80',
+        'string ends mid-sequence')
+
+    test_utf8(
+        '\xf0\x80\x80',
+        'string ends mid-sequence')
+
+    test_utf8(
+        '\xc0\xaf\xe0\x80\xaf\xf0\x80\x80\xaf',
+        'overlong representation',
+        'overlong representation',
+        'overlong representation')
+
+    test_utf8(
+        '\xed\xa0\x80\xed\xbf\xbf',
+        'surrogate',
+        'surrogate')
+
+end
+
 LuaUnit:main()
