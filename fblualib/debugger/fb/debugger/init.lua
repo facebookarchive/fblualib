@@ -6,7 +6,6 @@
 --  LICENSE file in the root directory of this source tree. An additional grant
 --  of patent rights can be found in the PATENTS file in the same directory.
 --
-
 local pl = require('pl.import_into')()
 local printf = pl.utils.printf
 local breakpoint = require('fb.debugger.breakpoint')
@@ -28,7 +27,6 @@ local current_file_contents
 local current_start_line
 local next_start_line
 local current_line
-
 local function prompt_exit()
     io.stdout:write('Do you really want to exit debugger ([y]/n)? ')
     io.flush()
@@ -723,21 +721,32 @@ for k, v in pairs(DebugStack) do
     end
 end
 
-local eline = editline.EditLine({
-    prompt = 'DEBUG> ',
-    complete = function(word, line, startpos, endpos)
-        return completer.complete(
-            word, line, startpos, endpos,
-            eline_keywords,
-            function() return eline_dstack:_get_locals_and_upvalues() end)
-    end,
-    history_file = os.getenv('HOME') .. '/.lua_debug_history',
-    auto_history = true,
-})
+-- Initializing the editline library modifies the terminal mode.
+-- If the process is running in the background, this will send it
+-- SIGTTOU which will cause it to stop.
+-- Therefore, lazy-initialize editline only when the debugger is
+-- actually run.
+local eline
+local function eline_init()
+   eline = editline.EditLine({
+      prompt = 'DEBUG> ',
+      complete = function(word, line, startpos, endpos)
+          return completer.complete(
+              word, line, startpos, endpos,
+              eline_keywords,
+              function() return eline_dstack:_get_locals_and_upvalues() end)
+      end,
+      history_file = os.getenv('HOME') .. '/.lua_debug_history',
+      auto_history = true,
+  })
+end
 
 local function debug_readline_repl(dstack)
     dstack:_new_location()
     eline_dstack = dstack
+    if not eline then
+       eline_init()
+    end
     while true do
         local line = eline:read()
         if not line then
