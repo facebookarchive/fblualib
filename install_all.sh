@@ -13,6 +13,10 @@ echo This script will install fblualib and all its dependencies.
 echo It has been tested on Ubuntu 13.10 and Ubuntu 14.04, Linux x86_64.
 echo
 
+set -e
+set -x
+
+
 if [[ $(arch) != 'x86_64' ]]; then
     echo "x86_64 required" >&2
     exit 1
@@ -24,8 +28,10 @@ if [[ $issue =~ ^Ubuntu\ 13\.10 ]]; then
     :
 elif [[ $issue =~ ^Ubuntu\ 14 ]]; then
     extra_packages=libiberty-dev
+elif [[ $issue =~ ^Ubuntu\ 15\.04 ]]; then
+    extra_packages=libiberty-dev
 else
-    echo "Ubuntu 13.10 or 14.* required" >&2
+    echo "Ubuntu 13.10, 14.* or 15.04 required" >&2
     exit 1
 fi
 
@@ -37,7 +43,7 @@ cd $dir
 
 echo Installing required packages
 echo
-sudo apt-get install \
+sudo apt-get install -y \
     git \
     curl \
     wget \
@@ -69,15 +75,16 @@ sudo apt-get install \
     libedit-dev \
     libmatio-dev \
     libpython-dev \
+    libpython3-dev \
     python-numpy
 
 echo
 echo Cloning repositories
 echo
-git clone https://github.com/facebook/folly
-git clone https://github.com/facebook/fbthrift
-git clone https://github.com/facebook/thpp
-git clone https://github.com/facebook/fblualib
+git clone -b v0.35.0  --depth 1 https://github.com/facebook/folly
+git clone -b v0.24.0  --depth 1 https://github.com/facebook/fbthrift
+git clone -b v1.0 https://github.com/facebook/thpp
+git clone -b v1.0 https://github.com/facebook/fblualib
 
 echo
 echo Building folly
@@ -88,6 +95,7 @@ autoreconf -ivf
 ./configure
 make
 sudo make install
+sudo ldconfig # reload the lib paths after freshly installed folly. fbthrift needs it.
 
 echo
 echo Building fbthrift
@@ -98,13 +106,6 @@ autoreconf -ivf
 ./configure
 make
 sudo make install
-
-echo
-echo '(Re)Installing Torch dependencies'
-echo
-
-curl -sk https://raw.githubusercontent.com/torch/ezinstall/master/install-deps | bash
-curl -sk https://raw.githubusercontent.com/torch/ezinstall/master/install-luajit+torch | bash
 
 echo
 echo 'Installing TH++'
