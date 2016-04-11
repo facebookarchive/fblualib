@@ -25,6 +25,7 @@ pcall(require,'torch')
 pcall(require,'paths')
 
 local pl = require('pl.import_into')()
+local path = pl.path
 local editline = require('fb.editline')
 local completer = require('fb.editline.completer')
 local eh = require('fb.util.error')
@@ -358,10 +359,10 @@ local function traceback(message)
     if type(debug) ~= "table" then return message end
     local tb = debug.traceback
     if type(tb) ~= "function" then return message end
-    return tb(message)
+    return tb(coroutine.running(), message)
 end
 
-local error_handler = traceback
+local error_handler = eh.wrap
 
 if os.getenv('LUA_DEBUG_ON_ERROR') then
     local debugger = require('fb.debugger')
@@ -421,6 +422,7 @@ local function make_repl(prompt_prefix)
                 io.stdout:write('Do you really want to exit ([y]/n)? ')
                 io.flush()
                 local line = io.read('*l')
+                if not line then os.exit() end -- stdin was closed
                 if line == '' or line:lower() == 'y' then
                     return 'quit'
                 end
@@ -472,7 +474,7 @@ local function make_repl(prompt_prefix)
                     return 'ok'
                 else
                     if results[2] then
-                        print(results[2])
+                        print(eh.format(results[2]))
                     end
                     return 'error'
                 end
@@ -483,10 +485,15 @@ local function make_repl(prompt_prefix)
             local is_stmt = (line:sub(-1) == ';')
 
             if not (is_print or is_return or is_stmt) then
-                local func, err = loadstring('return ' .. line)
-                if func then
-                    timer_start()
-                    return run_func(func, true)
+                local test_func, _err = loadstring('return ' .. line)
+                if test_func then
+                    -- workaround bug in traceback for loadstring()
+                    local inner_func, _err = loadstring('_RESULT={'..line..'}')
+                    if inner_func then -- should always be true
+                        local func = function() inner_func(); return unpack(_RESULT) end
+                        timer_start()
+                        return run_func(func, true)
+                    end
                 end
             end
 

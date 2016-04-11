@@ -25,19 +25,45 @@
 --   tostring(str), str1 .. str2
 -- * c_escape / c_unescape, escape / unescape special characters that couldn't
 --   go inside a C string (see folly::cEscape in <folly/String.h>)
+-- * splitlines(text, keepends), split a string into lines, as per
+--   https://docs.python.org/2/library/stdtypes.html#str.splitlines
+--   (Note that Penlight's version is incorrect)
+-- * indent_lines(text, indent), prepend indent to every line in the given
+--   text
+-- * utf8_get, retrieve one UTF-8 character at the given string position
+-- * utf8_iter, iterate over strings as sequences of UTF-8 characters
 --
 -- Table utilities:
 -- * filter_keys: given a table and a list of keys, return a subset of the table
 --   consisting of the elements whose keys are in the list of keys
 -- * is_list: check if a table is list-like (all keys are consecutive
 --   integers starting at 1). O(N) in the size of the table.
+-- * pack_n: pack varargs into a list-like table, also setting the special
+--   member 'n' to indicate the number of values (some might be holes); similar
+--   to _G.arg
+-- * unpack_n: the reverse of pack_n, expand the values in a list-like table
+--   with a 'n' member into multiple return values
 --
 -- Filesystem utilities:
 -- * create_temp_dir, create a temporary directory
 --
+-- Multithreading utilities:
+-- * get_once, get or create an once_record object (by unique string name)
+-- * pcall_once, ensure that a function is called successfully no more than
+--   once in the same process, among calls with the same once_record object
+-- * get_mutex, get or create a mutex object (by unique string name)
+-- * pcall_locked / call_locked, ensure mutual exclusion among concurrent calls
+--   with the same mutex object
+--
 -- Module utilities:
--- * relative_module, compute full module name based on relative name
--- * relative_require, require module based on relative name
+-- * current_module, return the current module load path (argument to
+--   "require" that would load the current module) and a "is_package" argument
+--   which is true if we are at "package level" (in a file named init.lua)
+-- * import, equivalent to Python's relative imports; the semantics are
+--   similar to the built-in function require(), except that, if the load path
+--   starts with ".", it is computed relative to the current module
+--   (import('.foo') loads modules from the same directory, import('..foo')
+--    loads modules from the parent directory, etc)
 --
 -- Clock utilities:
 -- * time(), return the time (as a floating-point number of seconds since
@@ -54,12 +80,16 @@
 -- Torch tensor utilities:
 -- * find(), given a 1d byte tensor, return a 1d long tensor containing the
 --   (1-based) indices of non-zero values in the input
+--
+-- System utilities:
+-- * setenv(), wrapper around the setenv library call
+-- * unsetenv(), wrapper around the unsetenv library call
 
 local ffi = require('ffi')
 local pl = require('pl.import_into')()
 local ok, torch = pcall(require, 'torch')
 if not ok then torch = nil end
-local module_config = require('fb.util._config')
+local bit = require('bit')
 
 local M = {}
 
@@ -301,7 +331,11 @@ end
 M.create_temp_dir = create_temp_dir
 
 
-local util_lib = ffi.load(module_config.clib)
+local lib_path = package.searchpath('libfbutil', package.cpath)
+if not lib_path then
+   lib_path = require('fb.util._config').clib
+end
+local util_lib = ffi.load(lib_path)
 M._clib = util_lib
 
 ffi.cdef([=[
@@ -542,6 +576,34 @@ local function c_unescape(str)
 end
 M.c_unescape = c_unescape
 
+-- pl.stringx.splitlines doesn't allow you to keep line terminators,
+-- and also incorrectly returns a single empty line when given an empty string.
+-- This behaves like Python's str.splitlines.
+local function splitlines(text, keepends)
+    local delta = keepends and 0 or -1  -- keepends ? 0 : -1
+    local lines = {}
+    local start = 1
+    while start <= #text do
+        local pos = string.find(text, '\n', start, true)
+        if not pos then
+            table.insert(lines, string.sub(text, start))
+            break
+        end
+        table.insert(lines, string.sub(text, start, pos + delta))
+        start = pos + 1
+    end
+
+    return lines
+end
+M.splitlines = splitlines
+
+local function indent_lines(text, indent)
+    return table.concat(pl.tablex.imap(
+        function(s) return indent .. s end,
+        splitlines(text, true)))
+end
+M.indent_lines = indent_lines
+
 
 if torch then
     M.find = function(byte_input)
@@ -567,8 +629,9 @@ if torch then
             end
             offset = offset + stride
         end
-
-        return output:sub(1, j)
+        if j>0 then
+            return output:sub(1, j)
+        end
     end
 end
 
@@ -606,45 +669,316 @@ end
 M.is_list = is_list
 
 
--- Compute a module path from the current's module name (argument to the
--- module, passed by require) and a given relative path. Useful to require
--- other modules from the same directory (or children).
---
--- strip is the number of path components to remove from the end of
--- the module name. The default (if unspecified) is 1, which will allow you
--- to access other modules from the same directory. Subtract 1 from the
--- desired value (so pass 0 to get modules from the same directory)
--- if you're in the "main" module in a directory (init.lua), as the
--- module name for foo/bar/init.lua is "foo.bar" not "foo.bar.init".
---
--- relative_module('foo.bar.baz', 'qux')  ==>  'foo.bar.qux'
--- relative_module('foo.bar.baz', 'qux', 0)  ==>  'foo.bar.baz.qux'
-local function relative_module(name, rel_path, strip)
-    strip = strip or 1
+local function pack_n(...)
+    local r = {...}
+    r.n = select('#', ...)
+    return r
+end
+M.pack_n = pack_n
 
-    local parts = pl.stringx.split(name, '.')
-    -- Just in case you got called as require('foo.bar.init') instead of
-    -- require('foo.bar'), remove the last component if it is 'init'.
+local function unpack_n(t, s, e)
+    return table.unpack(t, s or 1, e or t.n or #t)
+end
+M.unpack_n = unpack_n
+
+local function split_module_path(p)
+    local parts = pl.stringx.split(p, '.')
+    local is_init = false
     if parts[#parts] == 'init' then
+        is_init = true
+        table.remove(parts)
+    end
+    return parts, is_init
+end
+
+local function current_module_parts()
+    -- Figure out the current module. This requires messing around with the
+    -- debug API; we keep going up the stack (starting with the caller of
+    -- current_module_parts()) until we find a chunk at module level.
+    local level = 2
+    local info
+    while true do
+        info = debug.getinfo(level, 'nS')
+        if not info then
+            error('Could not find current module')
+        end
+        if info.what == 'main' then
+            break
+        end
+        level = level + 1
+    end
+
+    -- If this module wasn't loaded from a file (command-line, etc), bail out.
+    if info.source:sub(1, 1) ~= '@' then
+        error('Current module not loaded from a file: ' .. info.source)
+    end
+
+    -- If this module wasn't loaded from a Lua file, bail out.
+    local r, ext = pl.path.splitext(pl.path.basename(info.source))
+    if ext ~= '.lua' then
+        error('Current module not loaded from a Lua file: ' .. info.source)
+    end
+
+    -- The module load path (fb.util.foo) is passed as the first vararg
+    local vararg_name, path = debug.getlocal(level, -1)
+    if not vararg_name then
+        error('Module has empty load path: ' .. info.source)
+    end
+
+    -- This can still have false positives. You can load a chunk from a file
+    -- f = loadfile('baz.lua') and then call it f('foo'), and then we'll find
+    -- 'foo' as the path. Try to reduce the likelihood of false positives.
+
+    if debug.getlocal(level, -2) then
+        error('Not a module (multiple varargs): ' .. info.source)
+    end
+
+    if type(path) ~= 'string' then
+        error('Not a module (argument not a string): ' .. info.source)
+    end
+
+    if not package.loaded[path] then
+        error('Not a module (not in package.loaded): ' .. info.source)
+    end
+
+    -- Make sure we don't load modules as fb.util.init; use fb.util instead
+    local parts, is_init = split_module_path(path)
+    if is_init then
+        error('Do not load modules named "init": ' .. path)
+    end
+
+    -- Indicate if the module was loaded from a file named "init.lua";
+    -- if that's the case, the path is already at package level; otherwise,
+    -- the last component of the path is the module within a package.
+    return parts, (r == 'init')
+end
+
+-- Return the current module
+local function current_module()
+    local parts, package_level = current_module_parts()
+    return table.concat(parts, '.'), package_level
+end
+M.current_module = current_module
+
+-- Relative import
+local function import(rel_path)
+    -- Absolute import, same as require()
+    if rel_path:sub(1, 1) ~= '.' then
+        return require(rel_path)
+    end
+
+    local parts, package_level = current_module_parts()
+    if not package_level then
+        -- go to package level
         table.remove(parts)
     end
 
-    if #parts > strip then
-        local prefix = table.concat(parts, '.', 1, #parts - strip)
-        return prefix .. '.' .. rel_path
-    else
-        return rel_path
+    local rel_parts = split_module_path(rel_path:sub(2))
+    for i = 1, #rel_parts do
+        local p = rel_parts[i]
+        if p == '' then
+            if not table.remove(parts) then
+                error('Trying to go above root level')
+            end
+        else
+            table.insert(parts, p)
+        end
+    end
+    return require(table.concat(parts, '.'))
+end
+M.import = import
+
+ffi.cdef([=[
+void* getOnce(const char*);
+bool lockOnce(void*);
+void unlockOnce(void*, bool);
+]=])
+
+local function get_once(key)
+    return util_lib.getOnce(key)
+end
+M.get_once = get_once
+
+local ALREADY_CALLED = {}
+M.ALREADY_CALLED = ALREADY_CALLED
+
+-- Return ALREADY_CALLED if this once record object has already been used.
+-- Otherwise, behave like pcall_locked, below.
+local function pcall_once(once, func, ...)
+    if not util_lib.lockOnce(once) then
+        return ALREADY_CALLED
+    end
+    local ok, r = pcall(func, ...)
+    util_lib.unlockOnce(once, ok)
+    return ok, r
+end
+M.pcall_once = pcall_once
+
+ffi.cdef([=[
+void* getMutex(const char*);
+void lockMutex(void*);
+void unlockMutex(void*);
+]=])
+
+local function get_mutex(key)
+    local mutex = util_lib.getMutex(key)
+    if mutex == nullptr then
+        error('Cannot allocate memory')
+    end
+    return mutex
+end
+M.get_mutex = get_mutex
+
+-- Similar to pcall, but ensures that only one call to pcall_locked with the
+-- same mutex may execute concurrently in this process.
+local function pcall_locked(mutex, func, ...)
+    util_lib.lockMutex(mutex)
+    local ok, result = pcall(func, ...)
+    util_lib.unlockMutex(mutex)
+    return ok, result
+end
+M.pcall_locked = pcall_locked
+
+local function call_locked(mutex, func, ...)
+    local ok, r = pcall_locked(mutex, func, ...)
+    if not ok then error(r) end
+    return r
+end
+M.call_locked = call_locked
+
+ffi.cdef([=[
+int setenv(const char*, const char*, int);
+int unsetenv(const char*);
+]=])
+
+local function setenv(name, value, overwrite)
+    local overwrite_flag = overwrite and 1 or 0
+    if ffi.C.setenv(name, value, overwrite_flag) == -1 then
+        error('setenv failed: ' .. tostring(ffi.errno()))
     end
 end
-M.relative_module = relative_module
+M.setenv = setenv
 
-
--- Helper function to require a module from the same directory (or children)
--- Usage (at module level) (the current module name is passed as varargs):
---   local bar = relative_require(..., 'foo')
-local function relative_require(name, rel_path, strip)
-    return require(relative_module(name, rel_path, strip))
+local function unsetenv(name)
+    if ffi.C.unsetenv(name) == -1 then
+        error('unsetenv failed: ' .. tostring(ffi.errno()))
+    end
 end
-M.relative_require = relative_require
+M.unsetenv = unsetenv
+
+-- Return a UTF-8 character at index 'index' in string 's'.
+--
+-- Returns 2 values: code_point, length
+-- - code_point is the Unicode code point of the character
+-- - length is the length (in bytes) of the character; the next valid
+--   Unicode character is at position 'index + length' in the string.
+--
+-- On error, the behavior behaves according to the skip_errors argument:
+-- - if skip_errors is true, the function returns 3 values:
+--   false, length, error_message
+--   - length is the minimal length of the invalid sequence (so 'index + length'
+--     is the earlier position where a valid sequence could begin)
+--   - error_message is a human-readable error message
+-- - if skip_errors is false, an error is thrown
+--
+local function utf8_get(s, index, skip_errors)
+    local function fail(n, msg)
+        msg = 'Invalid UTF-8: ' .. msg
+        if not skip_errors then
+            error(msg)
+        end
+        return false, n, msg
+    end
+
+    local function get_byte(i)
+        local bi = string.byte(s, index + i)
+        if not bi then
+            return fail(i, 'string ends mid-sequence')
+        end
+        if bit.band(bi, 0xc0) ~= 0x80 then
+            return fail(i, 'non-continuation byte inside sequence')
+        end
+        return bi
+    end
+
+    local v = string.byte(s, index)
+    if not v then
+        return nil, 0 -- past the end
+    end
+
+    local n
+    if v >= 0xf8 then
+        n = v >= 0xfc and 5 or 4
+
+        -- Even though the sequence is invalid, make sure we fail as early as
+        -- possible, so fail if there's an invalid byte in this sequence.
+        for i = 1, n do
+            local bi, ii, msg = get_byte(i)
+            if bi == false then
+                return bi, ii, msg
+            end
+        end
+
+        return fail(n + 1, 'sequence too long (' .. n + 1 .. ' bytes)')
+    elseif v >= 0xf0 then
+        n = 3
+    elseif v >= 0xe0 then
+        n = 2
+    elseif v >= 0xc0 then
+        n = 1
+    elseif v >= 0x80 then
+        return fail(1, 'continuation byte at beginning of sequence')
+    else
+        return v, 1
+    end
+
+    v = bit.band(v, bit.lshift(1, 6-n) - 1)
+    for i = 1, n do
+        local bi, ii, msg = get_byte(i)
+        if bi == false then
+            return bi, ii, msg
+        end
+        v = bit.lshift(v, 6) + bit.band(bi, 0x3f)
+    end
+
+    if (v < 0x80 or
+        (v < 0x800 and n >= 2) or
+        (v < 0x10000 and n >= 3)) then
+        return fail(n + 1, 'overlong representation')
+    end
+
+    if v >= 0xd800 and v < 0xe000 then
+        return fail(n + 1, 'surrogate')
+    end
+
+    if v >= 0x110000 then
+        return fail(n + 1, 'past end of Unicode range')
+    end
+
+    return v, n + 1
+end
+M.utf8_get = utf8_get
+
+-- Iterate through a string as a sequence of Unicode characters.
+--
+-- Usage: for ch in utf8_iter(string) do ... end
+--
+-- - n is the first position in the string to start iterating (default 1)
+-- - skip_errors controls how invalid UTF-8 is handled:
+--   - if true, the iterator returns false for invalid characters (and
+--     you may continue with the next character); the iterator returns a
+--     second argument with the error message in this case
+--   - if false, iteration stops and an error is thrown
+--
+local function utf8_iter(s, n, skip_errors)
+    n = n or 1
+
+    return function()
+        local v, len, msg = utf8_get(s, n, skip_errors)
+        n = n + len
+        return v, msg
+    end
+end
+M.utf8_iter = utf8_iter
 
 return M

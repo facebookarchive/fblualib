@@ -8,100 +8,110 @@
 --
 
 -- Reactor pattern, wrapping a C++ EventBase
+--
+-- - loop()
+--   Will block until some progress has been made (at least one callback
+--   was called); returns the number of callbacks that have run.
+--
+-- - loop_nb()
+--   Non-blocking version of loop(); returns immediately (and returns 0)
+--   if no callbacks are runnable. Note that delayed callbacks are not
+--   considered runnable until their timer has expired.
+--
+-- - run(cb, ...)
+--   Add a callback to be called the next time loop() is invoked. Returns a
+--   unique id that can be passed to remove_callback() or lookup_callback()
+--
+-- - run_after_delay(seconds, cb, ...)
+--   Add a callback to be called when loop() is invoked, but no earlier than
+--   the given number of seconds. Returns a unique id that can be passed
+--   to remove_callback() or lookup_callback()
+--
+-- - remove_callback(id)
+--   Removes the callback; returns the callback state prior to removing.
+--
+-- - lookup_callback(id)
+--   Returns the callback state as a string (one of 'runnable', 'delayed')
+--   or nil if the callback is not found
+--
+-- - await(f)
+--   Wait for future f to be completed. Calls loop() underneath. Note that f
+--   must be completed as a result of some callbacks scheduled to run in this
+--   Reactor, or else you'll block forever.
+--
+-- Reactor is reentrant; if some callbacks call loop() (directly or via
+-- await()), everything works as intended.
+--
+-- More interestingly, callbacks can be scheduled from C++ code (either
+-- embedding Lua, or from a C++ module); get_executor() will return a
+-- lightuserdata corresponding to a folly::Executor* that C++ code can use
+-- for this purpose.
 
-local ffi = require('ffi')
-local pl = require('pl.import_into')()
 local util = require('fb.util')
-local util_lib = util._clib
+local pl = require('pl.import_into')()
+local cmod = require('fb.util.reactor_c')
+
+local state_names = {
+    [cmod.RUNNABLE] = 'runnable',
+    [cmod.DELAYED] = 'delayed',
+}
 
 local M = {}
 
-ffi.cdef([=[
-void abort();
-void* eventBaseNew();
-void eventBaseDelete(void*);
-bool eventBaseLoopForever(void*);
-void eventBaseTerminateLoop(void*);
-bool eventBaseRunInLoop(void*, void (*fn)(void));
-bool eventBaseRunAfterDelay(void*, int milliseconds, void (*fn)(void));
-]=])
-
-local Callback = ffi.typeof('void (*)(void)')
-
-local nullptr = ffi.new('void*')
-
 local Reactor = pl.class()
 
--- Create a Reactor
 function Reactor:_init()
-    self._eb = ffi.gc(util_lib.eventBaseNew(), util_lib.eventBaseDelete)
-    if self._eb == nullptr then
-        error('Out of memory')
-    end
+    self._reactor = cmod:new()
 end
 
--- Loop forever (until terminated with terminate_loop).
-function Reactor:loop()
-    -- This function may call deferred callbacks, so LuaJIT can't tell
-    -- that it must not be compiled.
-    jit.off(true, true)
-    if not util_lib.eventBaseLoopForever(self._eb) then
-        error('loop failed')
-    end
+local function make_closure(cb, ...)
+    local args = util.pack_n(...)
+    return function() cb(util.unpack_n(args)) end
 end
 
--- Terminate the loop; call from within a callback to cause the containing
--- loop() to exit at the end of this loop.
-function Reactor:terminate_loop()
-    util_lib.eventBaseTerminateLoop(self._eb)
-end
-
--- Wrap a Lua callback (with arguments); returns a FFI void (*)(void) that
--- will call the Lua callback when called. If the Lua callback throws an
--- error, the program aborts. The FFI callback frees itself when called,
--- so it may not be called more than once.
-local function wrap_callback(cb, ...)
-    local args = {...}
-    local ffi_cb
-    ffi_cb = ffi.cast(Callback, function()
-        local function handler(err)
-            io.stderr:write('Error in Reactor callback! ' .. err .. '\n')
-            io.stderr:write(debug.traceback())
-            ffi.C.abort()
-        end
-        local ok = xpcall(cb, handler, table.unpack(args))
-        if not ok then
-            io.stderr:write('Error in Reactor callback error handling?\n')
-            ffi.C.abort()
-        end
-        ffi_cb:free()
-    end)
-    return ffi_cb
-end
-M.wrap_callback = wrap_callback
-
--- Return a pointer to the EventBase (as a FFI void*) to be used with C++ code
--- that needs to schedule callbacks. You may use wrap_callback() to wrap a
--- Lua callback into a void (*)(void). Note that scheduling callbacks from
--- another thread (via EventBase::runInEventBaseThread) is perfectly fine, as
--- long as the Lua clalback was wrapped in the correct LuaJIT thread.
-function Reactor:event_base_ptr()
-    return self._eb
-end
-
--- Run a callback in the current or next iteration of the loop.
 function Reactor:run(cb, ...)
-    if not util_lib.eventBaseRunInLoop(self._eb, wrap_callback(cb, ...)) then
-        error('Error in Reactor:call')
-    end
+    return self._reactor:add_callback(make_closure(cb, ...))
 end
 
--- Run a callback after a given delay (in seconds)
-function Reactor:run_after_delay(delay, cb, ...)
-    if not util_lib.eventBaseRunAfterDelay(self._eb, delay * 1000,
-                                           wrap_callback(cb, ...)) then
-        error('Error in Reactor:call_after_delay')
+function Reactor:run_after_delay(seconds, cb, ...)
+    return self._reactor:add_callback_delayed(seconds, make_closure(cb, ...))
+end
+
+function Reactor:remove_callback(id)
+    return state_names[self._reactor:remove_callback(id)]
+end
+
+function Reactor:lookup_callback(id)
+    return state_names[self._reactor:lookup_callback(id)]
+end
+
+function Reactor:loop()
+    return self._reactor:loop(true)
+end
+
+function Reactor:loop_nb()
+    return self._reactor:loop(false)
+end
+
+function Reactor:await(future)
+    local done = false
+    future:on_completion(function() done = true end)
+    while not done do
+        self:loop()
     end
+    return future
+end
+
+function Reactor:awaitv(future)
+    return self:await(future):value()
+end
+
+function Reactor:get_executor()
+    return self._reactor:get_executor()
+end
+
+function Reactor:get_event_base()
+    return self._reactor:get_event_base()
 end
 
 M.Reactor = Reactor

@@ -33,14 +33,19 @@ function Digraph:add_vertex(v)
     self._in_edges[v] = {}
 end
 
+-- Returns true if the given vertex exists; false if not
+function Digraph:has_vertex(v)
+    return self._out_edges[v] ~= nil
+end
+
 -- Add an edge from v to w to the digraph; the vertices must already exist,
 -- but the edge must not.
 function Digraph:add_edge(v, w, e)
     e = e or true
-    if not self._out_edges[v] then
+    if not self:has_vertex(v) then
         error('Source vertex does not exist')
     end
-    if not self._out_edges[w] then
+    if not self:has_vertex(w) then
         error('Destination vertex does not exist')
     end
     if self._out_edges[v][w] then
@@ -53,9 +58,17 @@ function Digraph:add_edge(v, w, e)
     self._sources[w] = nil
 end
 
+-- Returns associated edge data for an edge if it exists
+function Digraph:get_edge(v, w)
+    if not self:has_vertex(v) or not self:has_vertex(w) then
+        return nil
+    end
+    return self._out_edges[v][w]
+end
+
 -- Remove an edge from v to w in the digraph; the edge must exist.
 function Digraph:remove_edge(v, w)
-    if (not self._out_edges[v]) or (not self._out_edges[w]) then
+    if (not self:has_vertex(v)) or (not self:has_vertex(w)) then
         error('Vertex does not exist')
     end
     if not self._out_edges[v][w] then
@@ -74,7 +87,7 @@ end
 
 -- Remove a vertex (and all edges to and from it) from the digraph.
 function Digraph:remove_vertex(v)
-    if not self._out_edges[v] then
+    if not self:has_vertex(v) then
         error('Vertex does not exist')
     end
     while true do

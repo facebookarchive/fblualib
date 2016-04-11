@@ -33,8 +33,78 @@
 --   execute func(...), execute handler(err) on error, execute handler()
 --   on success. The error propagates as normal to the next pcall / xpcall
 --   on the stack. Returns the value returned by func.
+--
+--
+-- Structured error handling
+--
+-- error() allows you to throw anything in Lua, with no structure (in
+-- particular, no stack trace). This module allows you to wrap such errors
+-- into structured objects which capture the stack trace at the point of
+-- creation and also support nesting (an error that was generated while
+-- processing another error).
+--
+-- Wrapped error objects have a few accessible fields:
+--
+-- message:      the original error message
+-- message_str:  the error message as a string
+-- nested_error: the nested error, if any
+-- traceback:    the traceback captured at construction time
+--
+-- wrap(e, level)
+--   Wrap 'e', capturing the stack trace (unless already wrapped).
+--   Use in error handlers:
+--
+--   local function handler(err)
+--       -- do something
+--       return eh.wrap(err)
+--   end
+--   xpcall(func, handler, args...)
+--
+--   Or, as a substitute for pcall(func, args...), use wrap() as the handler
+--   directly: xpcall(func, eh.wrap, args...)
+--
+-- create(message, nested_error, level)
+--   Create a wrapped error object with the given message, and, if specified,
+--   indicating that the error was caused by another (nested) error.
+--   Use when creating new error objects rather than wrapping caught errors.
+--   (There are slight semantic differences; error() prepends information about
+--   the topmost level of the call stack to the error string, and so create()
+--   does the same; wrap() assumes that the error being wrapped has already
+--   been processed by error())
+--
+-- throw(message, nested_error, level)
+--   Shortcut for error(create(message, nested_error, level+1))
+--
+-- format(e)
+--   Format an error message. Always returns a string, whether or not e
+--   is wrapped.
+--
+-- The level argument indicates the first level of the call stack to include in
+-- the stack trace; the default is 1, the function calling wrap() / create() /
+-- throw(). Just like the builtin error(), create() and throw() also accept
+-- level == 0, in which case they won't adorn the error message with
+-- information about the call stack.
+--
+--
+-- Other useful functions
+--
+-- safe_tostring(obj)
+--   Return a string description of the object. Won't throw; will return
+--   an explanatory message if tostring(obj) throws.
+
+local pl = require('pl.import_into')()
+local util = require('fb.util')
 
 local M = {}
+
+local function safe_tostring(msg)
+    local ok, str = pcall(tostring, msg)
+    if ok then return str end
+    ok, str = pcall(tostring, str)
+    if ok then return '(cannot convert to string: ' .. str .. ')' end
+    return '(cannot convert to string: failed recursively)'
+end
+M.safe_tostring = safe_tostring
 
 -- Implementation details:
 --
@@ -138,6 +208,100 @@ end
 
 function M.finally(func, handler, ...)
     return ensure_pcall(_on_error, func, handler, true, ...)
+end
+
+-- Wrapped errors
+local WrappedError = pl.class()
+
+function WrappedError:_init(msg, level)
+    level = level or 1
+    self.message = msg
+    self.message_str = safe_tostring(msg)
+    -- Penlight class constructors are nested two levels deep.
+    -- Strip those, and strip _init().
+    self.traceback = debug.traceback(coroutine.running(),
+                                     self.message_str, level + 3)
+end
+
+function WrappedError:__tostring()
+    return self.message_str
+end
+
+local function wrap(e)
+    if WrappedError:class_of(e) then
+        return e
+    else
+        return WrappedError(e, 2)
+    end
+end
+M.wrap = wrap
+
+local function unwrap(e)
+    if WrappedError:class_of(e) then
+        return e.message
+    else
+        return e
+    end
+end
+M.unwrap = unwrap
+
+local function incr_level(level, delta)
+    level = level or 1
+    delta = delta or 1
+    if level ~= 0 then
+        level = level + delta
+    end
+    return level
+end
+
+local function create(e, nested_error, level)
+    level = level or 1
+    if not WrappedError:class_of(e) then
+        if level ~= 0 then
+            -- error() adorns strings with information about where the
+            -- error was generated. Do the same.
+            if type(e) == 'number' or type(e) == 'string' then
+                local info = debug.getinfo(level + 1)
+                if info.what == 'Lua' then
+                    e = string.format(
+                        '%s:%d: %s', info.short_src, info.currentline, e)
+                end
+            end
+        else
+            level = 1
+        end
+        e = WrappedError(e, level + 1)  -- strip create()
+    end
+    e.nested_error = nested_error
+    return e
+end
+M.create = create
+
+local function throw(e, nested_error, level)
+    -- strip throw()
+    error(create(e, nested_error, incr_level(level)), 0)
+end
+M.throw = throw
+
+local function format(e)
+    if WrappedError:class_of(e) then
+        if e.nested_error then
+            return string.format(
+                '%s\nwhile processing nested error:\n%s',
+                e.traceback,
+                util.indent_lines(format(e.nested_error), '\t'))
+        end
+        return e.traceback
+    end
+    return safe_tostring(e)
+end
+M.format = format
+
+local ok, thrift = pcall(require, 'fb.thrift')
+if ok then
+    thrift.add_penlight_classes(
+        {WrappedError = WrappedError},
+        'fb.util.error')
 end
 
 return M
