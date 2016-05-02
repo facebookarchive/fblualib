@@ -77,42 +77,6 @@ int readTensor(lua_State* L) {
   return 1;
 }
 
-const char* kMetatableKey = "thrift.test.metatable";
-
-int doPushUserData(lua_State* L, int val) {
-  auto ptr = lua_newuserdata(L, sizeof(val));
-  luaL_getmetatable(L, kMetatableKey);
-  lua_setmetatable(L, -2);
-  memcpy(ptr, &val, sizeof(val));
-  return 1;
-}
-
-int newUserData(lua_State* L) {
-  int val = luaL_checkint(L, 1);
-  return doPushUserData(L, val);
-}
-
-int getUserData(lua_State* L) {
-  luaL_checkudata(L, 1, kMetatableKey);
-  auto ptr = reinterpret_cast<const int*>(lua_topointer(L, 1));
-  lua_pushinteger(L, *ptr);
-  return 1;
-}
-
-folly::IOBuf customDataSerializer(lua_State* L, int objIndex) {
-  auto ptr = lua_topointer(L, objIndex);
-  luaL_getmetatable(L, kMetatableKey);
-  lua_getmetatable(L, objIndex);
-  CHECK(lua_rawequal(L, -1, -2));
-  lua_pop(L, 2);
-  return folly::IOBuf(folly::IOBuf::COPY_BUFFER, ptr, sizeof(int));
-}
-
-void customDataDeserializer(lua_State* L, const folly::IOBuf& buf) {
-  folly::io::Cursor cursor(&buf);
-  doPushUserData(L, cursor.read<int>());
-}
-
 int checkTableIteration(lua_State* L) {
   auto obj = getFromString(L, 1);
 
@@ -253,11 +217,6 @@ const struct luaL_reg gFuncs[] = {
   {"read_double", readDouble},
   {"read_string", readString},
   {"read_tensor", readTensor},
-  // Create a new userdata object that encapsulates an int
-  {"new_userdata", newUserData},
-  // Get the encapsulated int from the given userdata object, checking the type
-  {"get_userdata", getUserData},
-  // Check the table created in the test
   {"check_table_iteration", checkTableIteration},
   {nullptr, nullptr},  // sentinel
 };
@@ -267,13 +226,5 @@ const struct luaL_reg gFuncs[] = {
 extern "C" int LUAOPEN(lua_State* L) {
   lua_newtable(L);
   luaL_register(L, nullptr, gFuncs);
-  luaL_newmetatable(L, kMetatableKey);
-  registerUserDataCallbacks(
-      L,
-      "thrift.test",
-      -1,
-      customDataSerializer,
-      customDataDeserializer);
-  lua_pop(L, 1);
   return 1;
 }

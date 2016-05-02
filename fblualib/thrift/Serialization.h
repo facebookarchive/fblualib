@@ -92,24 +92,112 @@ void setSpecialSerializationCallback(lua_State* L, int index);
 // end
 void setSpecialDeserializationCallback(lua_State* L, int index);
 
+struct SerializerOptions {
+  constexpr SerializerOptions() { }
+  thpp::SharingMode sharing = thpp::SHARE_IOBUF_MANAGED;
+  bool localMode = false;
+};
+
 // You may register callbacks to serialize custom full userdata types.
 //
-// The serialization callback is called with the stack index of the (full
-// userdata) object to be serialized. You must return the serialized form.
+// The callbacks are registered under a unique string key. The same callbacks
+// must be registered under the same key at deserialization time.
 //
-// The deserialization callback is called with the serialized form. You must
-// push the original object on the stack. We throw an error if the
-// deserialized object has a different metatable than the one given at
-// registration time.
+// In local-only mode (see the comments for the Serializer class), you register
+// one callback (a "factory"); the factory creates an object of a class
+// derived from MemUserData.
 //
-// The callbacks are registered using registerUserDataCallbacks.  The
-// callbacks are registered under a (unique) key; at deserialization time, you
-// must register the same callbacks under the same keys.
-typedef folly::IOBuf (*UserDataSerializer)(lua_State* L, int objIndex);
+// MemUserData must implement
+// - doKey(), to return the same key as that supplied at registration time, and
+// - doLuaPush(), to reconstruct the original Lua userdata (by pushing it onto
+//   a possibly different lua_State in the same process).  We check that the
+//   reconstructed object has the same metadata as that given at registration
+//   time.
+//
+// In non-local mode, you register a second callback (a "deserializer"),
+// and your MemUserData must also implement doSerialize(). doSerialize()
+// and the deserializer callback convert your userdata between the in-memory
+// form and an IOBuf.
+namespace detail {
 
-typedef void (*UserDataDeserializer)(
-    lua_State* L,
-    const folly::IOBuf& buf);
+class MemUserDataBase {
+ public:
+  void luaPush(lua_State* L) { doLuaPush(L); }
+
+  virtual ~MemUserDataBase() { }
+
+  LuaRefObject serializeObject(const SerializerOptions& options) const {
+    return doSerializeObject(options);
+  }
+
+ protected:
+  FOLLY_NORETURN void failNYI(const char* msg) const;
+
+ private:
+  // Implement this: push a Lua userdata corresponding to this object
+  virtual void doLuaPush(lua_State* L);
+
+  // You probably want doSerialize in MemUserData rather than this;
+  // doSerializeObject is only used for Torch Tensor and Storage objects
+  // (which are handled separately for historical reasons)
+  virtual LuaRefObject doSerializeObject(const SerializerOptions& options)
+    const;
+};
+
+}  // namespace detail
+
+class MemUserData : public detail::MemUserDataBase {
+ public:
+  folly::IOBuf serialize(const SerializerOptions& options) const {
+    return doSerialize(options);
+  }
+  folly::StringPiece key() const { return doKey(); }
+
+ private:
+  LuaRefObject doSerializeObject(const SerializerOptions& options) const
+    override final;
+
+  // Implement this: convert from in-memory form to IOBuf
+  virtual folly::IOBuf doSerialize(const SerializerOptions& options) const;
+
+  // Implement this: return unique key that matches the one given to
+  // registerUserDataCallbacks
+  virtual folly::StringPiece doKey() const;
+};
+
+
+// Create a MemUserData from a Lua userdata object at the given index on
+// the Lua stack
+using MemUserDataFactory =
+  std::function<std::unique_ptr<MemUserData>(lua_State*, int)>;
+
+// Create a MemUserData from the given serialized representation
+using MemUserDataDeserializer =
+  std::function<std::unique_ptr<MemUserData>(const folly::IOBuf&)>;
+
+class Serializer;
+class Deserializer;
+
+// In-memory serialized data set; may be converted to a fully-serialized
+// (Thrift) version by calling makePortable(). Opaque; pass around to a
+// Deserialize object.
+class MemSerializedData {
+  friend class Serializer;
+  friend class Deserializer;
+ public:
+  MemSerializedData() { }
+
+  LuaRefList& makePortable(
+      const SerializerOptions& options = SerializerOptions());
+  bool isPortable() const {
+    return isPortable_;
+  }
+
+ private:
+  LuaRefList luaRefs_;
+  std::vector<std::unique_ptr<detail::MemUserDataBase>> memRefs_;
+  bool isPortable_ = true;
+};
 
 // Register serialization / deserialization callbacks for userdata objects
 // whose metatable is at mtIndex. "key" must be unique among all custom
@@ -118,8 +206,23 @@ void registerUserDataCallbacks(
     lua_State* L,
     folly::StringPiece key,
     int mtIndex,
-    UserDataSerializer serializer,
-    UserDataDeserializer deserializer);
+    MemUserDataFactory factory,
+    MemUserDataDeserializer deserializer = nullptr);
+
+// If you don't care about the local-mode / fully-serialized distinction,
+// you may use a simpler API:
+
+using MemUserDataIOBufSerializer =
+  std::function<folly::IOBuf(lua_State* L, int index)>;
+using MemUserDataIOBufDeserializer =
+  std::function<void(lua_State* L, const folly::IOBuf& buf)>;
+
+void registerUserDataCallbacks(
+    lua_State* L,
+    folly::StringPiece key,
+    int mtIndex,
+    MemUserDataIOBufSerializer serializer,
+    MemUserDataIOBufDeserializer deserializer);
 
 // Unregister any serialization / deserialization callbacks registered
 // under the given key.
@@ -185,12 +288,16 @@ void unregisterUserDataCallbacks(lua_State* L, folly::StringPiece key);
 //
 // Note that the deserializer takes the non-inverted environment: a table
 // of tables. {package.loaded, {buf}} in our example.
+//
+// Local-only (in-process) mode: some Lua userdata may only be relevant
+// in the same process (and can't be serialized to disk), or may have a
+// more efficient in-memory representation (efficiency lost if serializing to /
+// deserializing from IOBuf). In that case, use finishLocal() rather than
+// finish(). The returned object is portable across lua_State in the same
+// process, but not across machines (unless you call makePortable on it).
 class Serializer {
  public:
-  struct Options {
-    constexpr Options() { }
-    thpp::SharingMode sharing = thpp::SHARE_IOBUF_MANAGED;
-  };
+  using Options = SerializerOptions;
   explicit Serializer(lua_State* L, Options options=Options());
   ~Serializer();
 
@@ -199,8 +306,15 @@ class Serializer {
                             Options options=Options());
 
   void setInvertedEnv(int invEnvIdx);
+
   LuaPrimitiveObject serialize(int index);
-  LuaRefList finish();
+  LuaRefList finish() {
+    return std::move(finishLocal().makePortable(options_));
+  }
+
+  MemSerializedData finishLocal();
+
+  lua_State* L() const { return L_; }
 
  private:
   struct SerializationContext {
@@ -215,11 +329,24 @@ class Serializer {
                         const SerializationContext& ctx, int level);
   void doSerializeFunction(LuaFunction& obj, int index,
                            const SerializationContext& ctx, int level);
+  bool doSerializeUserData(LuaRefObject& ref,
+                           int index, int mtIndex, int level);
+  void doSerializeMemUserData(
+      LuaRefObject& ref,
+      std::unique_ptr<detail::MemUserDataBase> memRef);
 
   lua_State* L_;
 
-  LuaRefList refs_;
+  MemSerializedData refs_;
   Options options_;
+};
+
+struct DeserializerOptions {
+  constexpr DeserializerOptions() { }
+  // Allow bytecode? or error out if encountered
+  bool allowBytecode = true;
+  // Memory sharing
+  thpp::SharingMode sharing = thpp::SHARE_IOBUF_MANAGED;
 };
 
 // In the common case of deserializing only one object,
@@ -241,18 +368,14 @@ class Serializer {
 //   may be used again.
 class Deserializer {
  public:
-  struct Options {
-    constexpr Options() { }
-    // Allow bytecode? or error out if encountered
-    bool allowBytecode = true;
-    // Memory sharing
-    thpp::SharingMode sharing = thpp::SHARE_IOBUF_MANAGED;
-  };
+  using Options = DeserializerOptions;
+
   explicit Deserializer(lua_State* L, Options options = Options());
   ~Deserializer();
 
   void setEnv(int envIdx);
   void start(const LuaRefList* refs);
+  void start(const MemSerializedData* serializedData);
   int deserialize(const LuaPrimitiveObject& obj);
   void finish();
 
@@ -270,6 +393,7 @@ class Deserializer {
 
   lua_State* L_;
   const LuaRefList* refs_;
+  const std::vector<std::unique_ptr<detail::MemUserDataBase>>* memUserData_;
   Options options_;
 };
 

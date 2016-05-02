@@ -10,6 +10,7 @@
 
 #include "Serialization.h"
 #include <fblualib/LuaUtils.h>
+#include <fblualib/UserData.h>
 #include <thrift/lib/cpp2/protocol/Serializer.h>
 
 #define XLOG_LEVEL 4
@@ -98,12 +99,13 @@ void registerUserDataCallbacks(
     lua_State* L,
     folly::StringPiece key,
     int mtIndex,
-    UserDataSerializer serializer,
-    UserDataDeserializer deserializer) {
+    MemUserDataFactory factory,
+    MemUserDataDeserializer deserializer) {
   mtIndex = luaRealIndex(L, mtIndex);
   // We store at kUserDataCallbackKey in the registry a table:
   // {
-  //   { key -> { metatable, serializer, deserializer } },  -- "keytab"
+  //   -- "keytab"
+  //   { key -> { metatable, factory, deserializer} },
   //   { metatable -> key },  -- "mttab", weak keys
   // }
   lua_pushlightuserdata(L, &kUserDataCallbackKey);
@@ -124,7 +126,7 @@ void registerUserDataCallbacks(
     luaL_error(L, "Custom user data metatable already registered");
   }
 
-  // Add key -> {mt, serializer, deserializer} mapping in keytab
+  // Add key -> {mt, factory, deserializer} mapping in keytab
   lua_rawgeti(L, -2, 1);  // tab mttab keytab
   lua_pushlstring(L, key.data(), key.size());  // tab mttab keytab key
 
@@ -133,24 +135,25 @@ void registerUserDataCallbacks(
     luaL_error(L, "Custom user data key already registered");
   }
 
-  // Create {mt, serializer, deserializer} table
+  // Create {mt, factory, deserializer} table
   lua_createtable(L, 3, 0);  // tab mttab keytab key new_value
 
   lua_pushvalue(L, mtIndex);  // tab mttab keytab key new_value mt
   lua_rawseti(L, -2, 1);  // new_value[1] = mt
   // tab mttab keytab key new_value
 
-  lua_pushlightuserdata(L, reinterpret_cast<void*>(serializer));
-  // tab mttab keytab key new_value serializer
-  lua_rawseti(L, -2, 2);  // new_value[2] = serializer
+  pushObject<MemUserDataFactory>(L, std::move(factory));
+  // tab mttab keytab key new_value factory
+  lua_rawseti(L, -2, 2);  // new_value[2] = factory
   // tab mttab keytab key new_value
 
-  lua_pushlightuserdata(L, reinterpret_cast<void*>(deserializer));
+  pushObject<MemUserDataDeserializer>(L, std::move(deserializer));
   // tab mttab keytab key new_value deserializer
   lua_rawseti(L, -2, 3);  // new_value[3] = deserializer
+
   // tab mttab keytab key new_value
 
-  // Actually set keytab[key] = {mt, serializer, deserializer}
+  // Actually set keytab[key] = {mt, factory, deserializer}
   lua_rawset(L, -3);  // tab mttab keytab
   lua_pop(L, 1);  // tab mttab
 
@@ -162,6 +165,64 @@ void registerUserDataCallbacks(
   // Clean up
   lua_pop(L, 2);
 }
+
+namespace {
+
+struct IOBufSerializationContext {
+  std::string key;
+  MemUserDataIOBufSerializer iobSerializer;
+  MemUserDataIOBufDeserializer iobDeserializer;
+};
+
+class IOBufMemUserData : public MemUserData {
+ public:
+  IOBufMemUserData(std::shared_ptr<IOBufSerializationContext> ctx,
+                   folly::IOBuf buf)
+    : ctx_(std::move(ctx)),
+      buf_(std::move(buf)) { }
+
+ private:
+  folly::StringPiece doKey() const override { return ctx_->key; }
+  void doLuaPush(lua_State* L) override {
+    (ctx_->iobDeserializer)(L, buf_);
+  }
+  folly::IOBuf doSerialize(const SerializerOptions& options) const override {
+    return buf_;
+  }
+
+  std::shared_ptr<IOBufSerializationContext> ctx_;
+  IOBuf buf_;
+};
+
+}  // namespace
+
+void registerUserDataCallbacks(
+    lua_State* L,
+    folly::StringPiece key,
+    int mtIndex,
+    MemUserDataIOBufSerializer iobSerializer,
+    MemUserDataIOBufDeserializer iobDeserializer) {
+  auto ctx = std::make_shared<IOBufSerializationContext>();
+  ctx->key = key.str();
+  ctx->iobSerializer = std::move(iobSerializer);
+  ctx->iobDeserializer = std::move(iobDeserializer);
+
+  auto factory =
+    [ctx] (lua_State* L, int index) -> std::unique_ptr<MemUserData> {
+      return folly::make_unique<IOBufMemUserData>(
+          ctx,
+          (ctx->iobSerializer)(L, index));
+    };
+
+  auto deserializer =
+    [ctx] (const folly::IOBuf& buf) -> std::unique_ptr<MemUserData> {
+      return folly::make_unique<IOBufMemUserData>(ctx, buf);
+    };
+
+  registerUserDataCallbacks(
+      L, key, mtIndex, std::move(factory), std::move(deserializer));
+}
+
 
 void unregisterUserDataCallbacks(
     lua_State* L,
@@ -183,7 +244,7 @@ void unregisterUserDataCallbacks(
     return;
   }
 
-  // prev_value is {mt, serializer, deserializer}
+  // prev_value is {mt, factory, deserializer}
   // Retrieve mt
   lua_rawgeti(L, -1, 1);  // tab mttab keytab key prev_value mt
 
@@ -198,6 +259,44 @@ void unregisterUserDataCallbacks(
   lua_pushnil(L);  // tab mttab keytab key nil
   lua_rawset(L, -3);  // set keytab[key] = nil
   // tab mttab keytab
+}
+
+namespace detail {
+
+void MemUserDataBase::failNYI(const char* message) const {
+  throw std::invalid_argument(folly::sformat(
+      "Not yet implemented: {}::{}",
+      folly::demangle(typeid(*this)),
+      message));
+}
+
+void MemUserDataBase::doLuaPush(lua_State* L) {
+  failNYI(__func__);
+}
+
+LuaRefObject MemUserDataBase::doSerializeObject(
+    const SerializerOptions& options) const {
+  failNYI(__func__);
+}
+
+}  // namespace detail
+
+LuaRefObject MemUserData::doSerializeObject(
+    const SerializerOptions& options) const {
+  LuaRefObject obj;
+  obj.__isset.customUserDataVal = true;
+  auto& cud = obj.customUserDataVal;
+  cud.key = key().str();
+  cud.value = serialize(options);
+  return obj;
+}
+
+folly::IOBuf MemUserData::doSerialize(const SerializerOptions& options) const {
+  failNYI(__func__);
+}
+
+folly::StringPiece MemUserData::doKey() const {
+  failNYI(__func__);
 }
 
 void Serializer::setInvertedEnv(int invEnvIdx) {
@@ -281,7 +380,7 @@ LuaPrimitiveObject Serializer::serialize(int index) {
   return out;
 }
 
-LuaRefList Serializer::finish() {
+MemSerializedData Serializer::finishLocal() {
   // Clear converted cache
   lua_pushlightuserdata(L_, this);
   lua_gettable(L_, LUA_REGISTRYINDEX);
@@ -289,6 +388,19 @@ LuaRefList Serializer::finish() {
   lua_rawseti(L_, -2, 1);
   lua_pop(L_, 1);
   return std::move(refs_);
+}
+
+LuaRefList& MemSerializedData::makePortable(const SerializerOptions& options) {
+  if (!isPortable_) {
+    for (auto& ref : luaRefs_) {
+      if (ref.__isset.memRefVal) {
+        ref = memRefs_.at(ref.memRefVal)->serializeObject(options);
+      }
+    }
+    memRefs_.clear();
+    isPortable_ = true;
+  }
+  return luaRefs_;
 }
 
 #define XLOG DVLOG(XLOG_LEVEL) << "S: " << indent(level)
@@ -299,67 +411,135 @@ std::string indent(int level) {
   return std::string(level * 2, ' ');
 }
 
-bool serializeUserData(lua_State* L, int index, int mtIndex,
-                       int level, LuaRefObject& ref) {
-  LuaStackGuard guard(L);
+template <class T>
+class TensorMemUserData : public detail::MemUserDataBase {
+ public:
+  explicit TensorMemUserData(typename thpp::Tensor<T>::Ptr tensor)
+    : tensor_(std::move(tensor)) { }
 
-  lua_pushlightuserdata(L, &kUserDataCallbackKey);
-  lua_gettable(L, LUA_REGISTRYINDEX);  // tab
-  if (lua_isnil(L, -1)) {
+ private:
+  void doLuaPush(lua_State* L) override {
+    luaPushTensor(L, *tensor_);
+  }
+
+  LuaRefObject doSerializeObject(const SerializerOptions& options) const
+      override {
+    LuaRefObject ref;
+    ref.__isset.tensorVal = true;
+    tensor_->serialize(ref.tensorVal,
+                       thpp::ThriftTensorEndianness::NATIVE,
+                       options.sharing);
+    return ref;
+  }
+
+  typename thpp::Tensor<T>::Ptr tensor_;
+};
+
+template <class T>
+class StorageMemUserData : public detail::MemUserDataBase {
+ public:
+  explicit StorageMemUserData(thpp::Storage<T> storage)
+    : storage_(std::move(storage)) { }
+
+ private:
+  void doLuaPush(lua_State* L) override {
+    luaPushStorage(L, storage_);
+  }
+
+  LuaRefObject doSerializeObject(const SerializerOptions& options) const
+      override {
+    LuaRefObject ref;
+    ref.__isset.storageVal = true;
+    storage_.serialize(ref.storageVal,
+                       thpp::ThriftTensorEndianness::NATIVE,
+                       options.sharing);
+    return ref;
+  }
+
+
+  thpp::Storage<T> storage_;
+};
+
+}  // namespace
+
+void Serializer::doSerializeMemUserData(
+    LuaRefObject& ref, std::unique_ptr<detail::MemUserDataBase> obj) {
+  ref.__isset.memRefVal = true;
+  ref.memRefVal = refs_.memRefs_.size();
+  refs_.isPortable_ = false;
+  refs_.memRefs_.push_back(std::move(obj));
+}
+
+bool Serializer::doSerializeUserData(
+    LuaRefObject& ref, int index, int mtIndex, int level) {
+  LuaStackGuard guard(L_);
+
+  lua_pushlightuserdata(L_, &kUserDataCallbackKey);
+  lua_gettable(L_, LUA_REGISTRYINDEX);  // tab
+  if (lua_isnil(L_, -1)) {
     return false;
   }
 
-  lua_rawgeti(L, -1, 2);  // tab mttab
-  lua_rawgeti(L, -2, 1);  // tab mttab keytab
+  lua_rawgeti(L_, -1, 2);  // tab mttab
+  lua_rawgeti(L_, -2, 1);  // tab mttab keytab
 
   // Look up key given userdata metatable (as mttab[mt])
-  lua_pushvalue(L, mtIndex);  // tab mttab keytab mt
-  lua_rawget(L, -3);  // tab mttab keytab key
-  if (lua_isnil(L, -1)) {  // not found
+  lua_pushvalue(L_, mtIndex);  // tab mttab keytab mt
+  lua_rawget(L_, -3);  // tab mttab keytab key
+  if (lua_isnil(L_, -1)) {  // not found
     return false;
   }
-  DCHECK_EQ(lua_type(L, -1), LUA_TSTRING);
+  DCHECK_EQ(lua_type(L_, -1), LUA_TSTRING);
 
-  // Retrieve serde ({mt, serializer, deserializer}) given key
-  lua_pushvalue(L, -1);  // tab mttab keytab key key
-  lua_rawget(L, -3);  // tab mttab keytab key serde
-  DCHECK_EQ(lua_type(L, -1), LUA_TTABLE);
+  // Retrieve serde ({mt, factory, deserializer}) given key
+  lua_pushvalue(L_, -1);  // tab mttab keytab key key
+  lua_rawget(L_, -3);  // tab mttab keytab key serde
+  DCHECK_EQ(lua_type(L_, -1), LUA_TTABLE);
 
 #ifndef NDEBUG
   // In debug mode, verify that the metatable actually matches
-  lua_rawgeti(L, -1, 1);
-  DCHECK(lua_rawequal(L, -1, mtIndex));
-  lua_pop(L, 1);
+  lua_rawgeti(L_, -1, 1);
+  DCHECK(lua_rawequal(L_, -1, mtIndex));
+  lua_pop(L_, 1);
 #endif
 
   // tab mttab keytab key serde
-  // Retrieve serializer (serde[2])
-  lua_rawgeti(L, -1, 2);  // tab mttab keytab key serde serializer
-  auto serializer = reinterpret_cast<UserDataSerializer>(
-      lua_touserdata(L, -1));
-  lua_pop(L, 2);  // tab mttab keytab key
 
-  // Call serializer
-  int prevTop = lua_gettop(L);
-  auto buf = serializer(L, index);
-  if (lua_gettop(L) != prevTop) {
-    luaL_error(L, "serializer did not leave stack unchanged");
+  // Retrieve serializer (serde[2])
+  lua_rawgeti(L_, -1, 2);  // tab mttab keytab key serde serializer
+  auto& factory = getObjectChecked<MemUserDataFactory>(L_, -1);
+  if (!factory) {
+    return false;
   }
 
-  ref.__isset.customUserDataVal = true;
-  auto& cud = ref.customUserDataVal;
+  lua_pop(L_, 2);  // tab mttab keytab key
+
+  // Call serializer
+  int prevTop = lua_gettop(L_);
+  auto obj = factory(L_, index);
+  if (lua_gettop(L_) != prevTop) {
+    luaL_error(L_, "factory did not leave stack unchanged");
+  }
 
   // Key is still at the top of the stack
   size_t len;
-  auto str = lua_tolstring(L, -1, &len);
-  cud.key.assign(str, len);
-  XLOG << "custom userdata [" << cud.key << "]";
-  cud.value = std::move(buf);
+  auto str = lua_tolstring(L_, -1, &len);
+  folly::StringPiece key(str, len);
+
+  if (key != obj->key()) {
+    luaL_error(L_, "userdata key mismatch");
+  }
+
+  if (options_.localMode) {
+    XLOG << "custom mem userdata [" << key << "]";
+    doSerializeMemUserData(ref, std::move(obj));
+  } else {
+    XLOG << "custom userdata [" << key << "]";
+    ref = obj->serializeObject(options_);
+  }
 
   return true;
 }
-
-}  // namespace
 
 void Serializer::doSerialize(LuaPrimitiveObject& obj, int index,
                              const SerializationContext& ctx,
@@ -382,7 +562,7 @@ void Serializer::doSerialize(LuaPrimitiveObject& obj, int index,
       return;
     }
 
-    refIdx = refs_.size();
+    refIdx = refs_.luaRefs_.size();
 
     lua_pushvalue(L_, index);
     lua_pushinteger(L_, refIdx);
@@ -393,7 +573,7 @@ void Serializer::doSerialize(LuaPrimitiveObject& obj, int index,
 
     // Reserve spot at refIdx, we'll fill after children are serialized
     // (postorder)
-    refs_.emplace_back();
+    refs_.luaRefs_.emplace_back();
     XLOG << "new reference " << refIdx;
 
     bool found = false;
@@ -416,7 +596,7 @@ void Serializer::doSerialize(LuaPrimitiveObject& obj, int index,
     }
 
     if (found) {
-      refs_[refIdx] = std::move(ref);
+      refs_.luaRefs_[refIdx] = std::move(ref);
       return;
     }
   }
@@ -474,10 +654,17 @@ void Serializer::doSerialize(LuaPrimitiveObject& obj, int index,
       auto tensor = luaGetTensor<TYPE>(L_, index); \
       if (tensor) { \
         XLOG << "Tensor<" #TYPE ">"; \
-        ref.__isset.tensorVal = true; \
-        (*tensor)->serialize(ref.tensorVal, \
-                             thpp::ThriftTensorEndianness::NATIVE, \
-                             options_.sharing); \
+        if (options_.localMode) { \
+          doSerializeMemUserData( \
+              ref, \
+              folly::make_unique<TensorMemUserData<TYPE>>( \
+                  std::move(*tensor))); \
+        } else { \
+          ref.__isset.tensorVal = true; \
+          (*tensor)->serialize(ref.tensorVal, \
+                               thpp::ThriftTensorEndianness::NATIVE, \
+                               options_.sharing); \
+        } \
         break; \
       } \
     }
@@ -493,10 +680,17 @@ void Serializer::doSerialize(LuaPrimitiveObject& obj, int index,
       auto storage = luaGetStorage<TYPE>(L_, index); \
       if (storage) { \
         XLOG << "Storage<" #TYPE ">"; \
-        ref.__isset.storageVal = true; \
-        storage->serialize(ref.storageVal, \
-                           thpp::ThriftTensorEndianness::NATIVE, \
-                           options_.sharing); \
+        if (options_.localMode) { \
+          doSerializeMemUserData( \
+              ref, \
+              folly::make_unique<StorageMemUserData<TYPE>>( \
+                  std::move(*storage))); \
+        } else { \
+          ref.__isset.storageVal = true; \
+          storage->serialize(ref.storageVal, \
+                             thpp::ThriftTensorEndianness::NATIVE, \
+                             options_.sharing); \
+        } \
         break; \
       } \
     }
@@ -509,7 +703,7 @@ void Serializer::doSerialize(LuaPrimitiveObject& obj, int index,
 
     if (lua_getmetatable(L_, index)) {
       // Try custom userdata serializer for this metatable
-      bool done = serializeUserData(L_, index, lua_gettop(L_), level, ref);
+      bool done = doSerializeUserData(ref, index, lua_gettop(L_), level);
       lua_pop(L_, 1);  // pop metatable
       if (done) {
         break;
@@ -531,7 +725,7 @@ void Serializer::doSerialize(LuaPrimitiveObject& obj, int index,
   }
 
   if (refIdx >= 0) {
-    refs_[refIdx] = std::move(ref);
+    refs_.luaRefs_[refIdx] = std::move(ref);
   }
 }
 
@@ -705,6 +899,7 @@ void Serializer::doSerializeFunction(LuaFunction& obj,
 Deserializer::Deserializer(lua_State* L, Options options)
   : L_(L),
     refs_(nullptr),
+    memUserData_(nullptr),
     options_(std::move(options)) {
   // Store in the registry a 2-element table: converted cache and
   // env.
@@ -718,7 +913,18 @@ Deserializer::Deserializer(lua_State* L, Options options)
 void Deserializer::start(const LuaRefList* refs) {
   DCHECK(!refs_);
   DCHECK(refs);
+  DCHECK(!memUserData_);
   refs_ = refs;
+
+  doDeserializeRefs();
+}
+
+void Deserializer::start(const MemSerializedData* serializedData) {
+  DCHECK(!refs_);
+  DCHECK(!memUserData_);
+  DCHECK(serializedData);
+  refs_ = &serializedData->luaRefs_;
+  memUserData_ = &serializedData->memRefs_;
 
   doDeserializeRefs();
 }
@@ -805,10 +1011,11 @@ bool deserializeUserData(lua_State* L, const LuaUserData& cud) {
 
   // Get deserializer (as serde[3])
   lua_rawgeti(L, -1, 3);  // tab keytab value deserializer
-  DCHECK(lua_islightuserdata(L, -1));
 
-  auto deserializer = reinterpret_cast<UserDataDeserializer>(
-      lua_touserdata(L, -1));
+  auto& deserializer = getObjectChecked<MemUserDataDeserializer>(L, -1);
+  if (!deserializer) {
+    luaL_error(L, "no userdata deserializer registered");
+  }
 
   lua_rawgeti(L, -2, 1);  // tab keytab value deserializer mt
   lua_replace(L, -5);  // mt keytab value deserializer
@@ -817,7 +1024,12 @@ bool deserializeUserData(lua_State* L, const LuaUserData& cud) {
   int prevTop = lua_gettop(L);
 
   // Call deserializer
-  deserializer(L, cud.value);
+  auto obj = deserializer(cud.value);
+  if (!obj) {
+    return false;
+  }
+
+  obj->luaPush(L);
   if (lua_gettop(L) != prevTop + 1) {
     luaL_error(L, "deserializer did not leave one item on the stack");
   }
@@ -908,6 +1120,17 @@ void Deserializer::doDeserializeRefs() {
       default:
         luaL_error(L_, "invalid storage type");
       }
+      record();
+    } else if (ref.__isset.memRefVal) {
+      XLOG << "memRef";
+      if (!memUserData_) {
+        luaL_error(L_, "invalid memRef: no memUserData");
+      }
+      auto idx = ref.memRefVal;
+      if (idx < 0 || idx >= memUserData_->size()) {
+        luaL_error(L_, "invalid memRef: out of range");
+      }
+      (*memUserData_)[idx]->luaPush(L_);
       record();
     } else if (ref.__isset.customUserDataVal) {
       auto& cud = ref.customUserDataVal;

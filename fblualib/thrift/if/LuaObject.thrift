@@ -89,6 +89,7 @@ struct LuaRefObject {
   5: optional Tensor.ThriftStorage storageVal,
   6: optional LuaExternalEnvLocation envLocation,
   7: optional LuaUserData customUserDataVal,
+  8: optional i64 memRefVal,
 }
 
 typedef list<LuaRefObject> LuaRefList
