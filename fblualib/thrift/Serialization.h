@@ -131,7 +131,7 @@ class MemUserDataBase {
   }
 
  protected:
-  FOLLY_NORETURN void failNYI(const char* msg) const;
+  [[noreturn]] void failNYI(const char* msg) const;
 
  private:
   // Implement this: push a Lua userdata corresponding to this object
