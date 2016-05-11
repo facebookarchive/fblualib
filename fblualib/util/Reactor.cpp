@@ -282,6 +282,7 @@ int Reactor::luaLoop(lua_State* L) {
   };
   detail::gLoopingState = LoopingState(L, this);
 
+  auto keepAlive = eb_->loopKeepAlive();
   do {
     if (!eb_->loopOnce(flags)) {
       luaL_error(L, "EventBase loop returned error!");

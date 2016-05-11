@@ -70,7 +70,7 @@ function testCoroutines()
 
     local function loop_until_done()
         while not done do
-            r:loop()
+            r:loop_nb()
         end
     end
 
