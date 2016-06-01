@@ -17,9 +17,9 @@ int initStorage(lua_State* L) {
   PythonGuard g;
   PythonStorage<double>::define();
   PythonStorage<float>::define();
-  PythonStorage<int32_t>::define();
-  PythonStorage<int64_t>::define();
-  PythonStorage<uint8_t>::define();
+  PythonStorage<int>::define();
+  PythonStorage<long>::define();
+  PythonStorage<unsigned char>::define();
   return 0;
 }
 

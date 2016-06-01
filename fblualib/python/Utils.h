@@ -17,14 +17,17 @@
 #include <boost/operators.hpp>
 
 #include <lua.hpp>
+#include <luaT.h>
 #include <Python.h>
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
 #include <numpy/arrayobject.h>
+#include <glog/logging.h>
 
-#include <fblualib/LuaUtils.h>
 #include <thpp/Tensor.h>
 #include "Debug.h"
+#ifndef NDEBUG
 #include <folly/ThreadLocal.h>
+#endif
 
 namespace fblualib {
 namespace python {

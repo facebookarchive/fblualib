@@ -11,6 +11,7 @@
 #ifndef FBLUA_PYTHON_PYTHONTOLUA_H_
 #define FBLUA_PYTHON_PYTHONTOLUA_H_
 
+#include <unordered_map>
 #include "Utils.h"
 
 namespace fblualib {

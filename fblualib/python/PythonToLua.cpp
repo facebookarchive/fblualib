@@ -17,13 +17,22 @@ namespace python {
 
 namespace {
 
+template <class T>
+void luaPushTensor(lua_State* L, thpp::TensorPtr<thpp::Tensor<T>> tensor) {
+  luaT_pushudata(L, tensor.moveAsTH(), thpp::Tensor<T>::kLuaTypeName);
+}
+template <class T>
+void luaPushTensor(lua_State* L, const thpp::Tensor<T>& tensor) {
+  luaPushTensor<T>(L, tensor.copyPtr());
+}
+
 // Push a tensor, assuming arr is a numpy array of appropriate type
 template <class T>
 void pushTensor(lua_State* L, const PyObjectHandle& oh) {
   auto arr = reinterpret_cast<PyArrayObject*>(oh.get());
   auto storage = thpp::Storage<T>::wrapWithAllocator(
-      folly::Range<T*>(static_cast<T*>(PyArray_DATA(arr)),
-                       PyArray_NBYTES(arr) / sizeof(T)),
+      static_cast<T*>(PyArray_DATA(arr)),
+      PyArray_NBYTES(arr) / sizeof(T),
       &thpp::THAllocatorWrapper<NumpyArrayAllocator>::thAllocator,
       new NumpyArrayAllocator(oh));
 
@@ -194,9 +203,9 @@ int PythonToLuaConverter::doConvert(lua_State* L, const PyObjectHandle& oh) {
     switch (PyArray_TYPE(arrObj)) {
     NDARRAY_TO_TENSOR(double, NPY_DOUBLE);
     NDARRAY_TO_TENSOR(float, NPY_FLOAT);
-    NDARRAY_TO_TENSOR(int32_t, NPY_INT32);
-    NDARRAY_TO_TENSOR(int64_t, NPY_INT64);
-    NDARRAY_TO_TENSOR(uint8_t, NPY_UINT8);
+    NDARRAY_TO_TENSOR(int, NPY_INT32);
+    NDARRAY_TO_TENSOR(long, NPY_INT64);
+    NDARRAY_TO_TENSOR(unsigned char, NPY_UINT8);
     default:
       luaL_error(L, "Invalid numpy data type %d", PyArray_TYPE(arrObj));
     }

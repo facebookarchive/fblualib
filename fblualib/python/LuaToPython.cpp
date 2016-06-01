@@ -15,6 +15,30 @@
 namespace fblualib {
 namespace python {
 
+namespace detail {
+template <class T>
+typename thpp::Tensor<T>::Ptr luaGetTensor(lua_State* L, int ud) {
+  return typename thpp::Tensor<T>::Ptr(
+      static_cast<typename thpp::Tensor<T>::THType*>(
+        luaT_toudata(L, ud, thpp::Tensor<T>::kLuaTypeName)));
+}
+
+size_t luaListSizeChecked(lua_State* L, int ud) {
+  if (!lua_istable(L, ud)) {
+    luaL_error(L, "not a table");
+  }
+  size_t n = 0;
+  bool end = false;
+  for (; !end; ++n) {
+    lua_rawgeti(L, ud, n + 1);
+    end = lua_isnil(L, -1);
+    lua_pop(L, 1);
+  }
+  --n;
+  return n;
+}
+} // namespace detail
+
 // Record objects that we've already converted, so identical objects convert
 // to identical objects (and also, so objects with cycles terminate)
 void LuaToPythonConverter::record(lua_State* L, int index,
@@ -65,7 +89,7 @@ PyObjectHandle LuaToPythonConverter::convert(lua_State* L, int index,
     {
       double val = lua_tonumber(L, index);
       if (flags & INTEGRAL_NUMBERS) {
-        long lval = folly::to<long>(val);
+        long lval = (long)(val);
         obj.reset(PyInt_FromLong(lval));
       } else {
         obj.reset(PyFloat_FromDouble(val));
@@ -108,17 +132,17 @@ PyObjectHandle LuaToPythonConverter::convert(lua_State* L, int index,
     // Torch tensor -> numpy.ndarray
 #define TENSOR_TO_NDARRAY(TYPE, NUMPY_TYPE) \
     { \
-      auto tensor = luaGetTensor<TYPE>(L, index); \
+      auto tensor = detail::luaGetTensor<TYPE>(L, index); \
       if (tensor) { \
-        obj = convertTensor<TYPE>(L, **tensor, NUMPY_TYPE); \
+        obj = convertTensor<TYPE>(L, *tensor, NUMPY_TYPE); \
         break; \
       } \
     }
     TENSOR_TO_NDARRAY(double, NPY_DOUBLE);
     TENSOR_TO_NDARRAY(float, NPY_FLOAT);
-    TENSOR_TO_NDARRAY(int32_t, NPY_INT32);
-    TENSOR_TO_NDARRAY(int64_t, NPY_INT64);
-    TENSOR_TO_NDARRAY(uint8_t, NPY_UINT8);
+    TENSOR_TO_NDARRAY(int, NPY_INT32);
+    TENSOR_TO_NDARRAY(long, NPY_INT64);
+    TENSOR_TO_NDARRAY(unsigned char, NPY_UINT8);
 #undef TENSOR_TO_NDARRAY
     isInvalid = true;
     break;
@@ -154,7 +178,7 @@ PyObjectHandle LuaToPythonConverter::convert(lua_State* L, int index,
     return nullptr;
   }
 
-  checkPythonError(obj, L, "lua->python conversion, type {}", type);
+  checkPythonError(obj, L, "lua->python conversion, type %d", type);
 
   if (!recorded) {
     record(L, index, obj);
@@ -195,7 +219,7 @@ PyObjectHandle LuaToPythonConverter::convertToInt(lua_State* L, int index) {
     luaL_error(L, "Invalid type for convertToInt: %d", type);
   }
   double val = lua_tonumber(L, index);
-  long lval = folly::to<long>(val);
+  long lval = (long)(val);
   PyObjectHandle obj(PyInt_FromLong(lval));
   checkPythonError(obj, L, "convertToInt");
   return obj;
@@ -215,7 +239,7 @@ PyObjectHandle LuaToPythonConverter::convertToLong(lua_State* L, int index) {
     luaL_error(L, "Invalid type for convertToLong: %d", type);
   }
   double val = lua_tonumber(L, index);
-  long lval = folly::to<long>(val);
+  long lval = (long)(val);
   PyObjectHandle obj(PyLong_FromLong(lval));
   checkPythonError(obj, L, "convertToLong");
   return obj;
@@ -359,7 +383,7 @@ PyObjectHandle LuaToPythonConverter::convertFromTable(lua_State* L, int index) {
 #define DEFINE_SEQUENCE_CONVERT_FUNCTION(TYPE) \
   PyObjectHandle LuaToPythonConverter::convert ## TYPE ## FromTable( \
       lua_State* L, int index, bool rec) { \
-    size_t len = luaListSizeChecked(L, index); \
+    size_t len = detail::luaListSizeChecked(L, index); \
     PyObjectHandle obj(Py ## TYPE ## _New(len)); \
     checkPythonError(obj, L, "convert" #TYPE "FromTable"); \
     if (rec) { \
@@ -427,7 +451,7 @@ PyObjectHandle LuaToPythonConverter::convertTensor(lua_State* L,
   // to a 1d Numpy tensor of shape [0]. Also see pushTensor in PythonToLua.cpp.
   if (tensor.ndims() != 0) {
     ndims = tensor.ndims();
-    auto tsizes = tensor.sizes();
+    auto tsizes = tensor.sizesTH();
     DCHECK_EQ(tsizes.size(), ndims);
 
     dims.reset(new npy_intp[ndims]);
@@ -435,7 +459,7 @@ PyObjectHandle LuaToPythonConverter::convertTensor(lua_State* L,
     std::copy(tsizes.begin(), tsizes.end(), dims.get());
 
     if (!tensor.isContiguous()) {
-      auto tstrides = tensor.strides();
+      auto tstrides = tensor.stridesTH();
       DCHECK_EQ(tstrides.size(), ndims);
 
       strides.reset(new npy_intp[ndims]);
@@ -454,7 +478,7 @@ PyObjectHandle LuaToPythonConverter::convertTensor(lua_State* L,
       &PyArray_Type, ndims, dimsPtr, numpyType,
       strides.get(), tensor.data(), 0,
       NPY_ARRAY_ALIGNED, nullptr));
-  checkPythonError(obj, L, "create numpy.ndarray of type {}", numpyType);
+  checkPythonError(obj, L, "create numpy.ndarray of type %d", numpyType);
 
   // Create a PythonStorage object to hold the reference count.
   // PyArray_SetBaseObject steals the reference to the base object.

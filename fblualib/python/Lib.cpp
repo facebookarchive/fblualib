@@ -12,10 +12,13 @@
 #define _GNU_SOURCE 1
 #endif
 
-#include <dlfcn.h>
 #include <Python.h>
+#include <glog/logging.h>
+#include <dlfcn.h>
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
 #include <numpy/arrayobject.h>
+
+#include <mutex>
 
 #include "LuaToPython.h"
 #include "PythonToLua.h"

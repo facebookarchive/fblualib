@@ -5,6 +5,19 @@ on-the-fly conversion (with good defaults) of most data types back and forth.
 This allows, for example, to use `numpy`, `scipy`, or `matplotlib` directly
 with Torch tensors.
 
+## Installation
+
+Dependencies:
+
+* glog
+* boost
+* python2.7 (Manually edit the CMake for older versions, 3+ is not supported)
+* [thpp](https://github.com/facebook/thpp/)
+
+```
+luarocks make rockspec/*
+```
+
 ## Usage
 
 Throughout this document, we'll refer to this module as `py`:
