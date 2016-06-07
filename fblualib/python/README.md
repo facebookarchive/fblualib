@@ -12,7 +12,9 @@ Dependencies:
 * glog
 * boost
 * python2.7 (Manually edit the CMake for older versions, 3+ is not supported)
-* [thpp](https://github.com/facebook/thpp/)
+* [thpp](https://github.com/facebook/thpp/) (If you don't have folly or thrift,
+you can still build thpp with `THPP_NOFB=1 ./build.sh`, and fbpython should
+still work)
 
 ```
 luarocks make rockspec/*
