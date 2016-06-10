@@ -26,6 +26,11 @@ void luaPushTensor(lua_State* L, const thpp::Tensor<T>& tensor) {
   luaPushTensor<T>(L, tensor.copyPtr());
 }
 
+THAllocator numpyArrayTHAllocator = {
+  &thpp::THAllocatorWrapper<NumpyArrayAllocator>::malloc,
+  &thpp::THAllocatorWrapper<NumpyArrayAllocator>::realloc,
+  &thpp::THAllocatorWrapper<NumpyArrayAllocator>::free,
+};
 // Push a tensor, assuming arr is a numpy array of appropriate type
 template <class T>
 void pushTensor(lua_State* L, const PyObjectHandle& oh) {
@@ -33,7 +38,7 @@ void pushTensor(lua_State* L, const PyObjectHandle& oh) {
   auto storage = thpp::Storage<T>::wrapWithAllocator(
       static_cast<T*>(PyArray_DATA(arr)),
       PyArray_NBYTES(arr) / sizeof(T),
-      &thpp::THAllocatorWrapper<NumpyArrayAllocator>::thAllocator,
+      &numpyArrayTHAllocator,
       new NumpyArrayAllocator(oh));
 
   // Numpy and Torch disagree on empty tensors. In Torch, an empty
