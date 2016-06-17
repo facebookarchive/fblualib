@@ -133,13 +133,14 @@ function testLoadAndSave()
     local av = require('fb.atomicvector')
     local file = require('fb.util.file')
     require('torch')
+    local os = require 'os'
 
     local name = "ldAndSave" .. math.random(320)
 
     local nElements = 1e5
     local vec
     local numThreads = 40
-    local filename = '/tmp/av_save_load_test.dat'
+    local filename = os.tmpname()
 
     file.truncate(filename, 0)
     buildHugeVector(name, nElements, numThreads)
@@ -172,6 +173,7 @@ function testLoadAndSave()
     vec2 = nil
     av.destroy(name2)
     collectgarbage()
+    os.remove(filename)
 end
 
 function testErrorClib()
