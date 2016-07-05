@@ -29,85 +29,7 @@ local path = pl.path
 local editline = require('fb.editline')
 local completer = require('fb.editline.completer')
 local eh = require('fb.util.error')
-
-local printf = pl.utils.printf
-
--- Colors:
-local colors = {
-    none = '\27[0m',
-    black = '\27[0;30m',
-    red = '\27[0;31m',
-    green = '\27[0;32m',
-    yellow = '\27[0;33m',
-    blue = '\27[0;34m',
-    magenta = '\27[0;35m',
-    cyan = '\27[0;36m',
-    white = '\27[0;37m',
-    Black = '\27[0;1;30m',
-    Red = '\27[0;1;31m',
-    Green = '\27[0;1;32m',
-    Yellow = '\27[0;1;33m',
-    Blue = '\27[0;1;34m',
-    Magenta = '\27[0;1;35m',
-    Cyan = '\27[0;1;36m',
-    White = '\27[0;1;37m',
-    Default = '\27[0;1m',
-    _black = '\27[40m',
-    _red = '\27[41m',
-    _green = '\27[42m',
-    _yellow = '\27[43m',
-    _blue = '\27[44m',
-    _magenta = '\27[45m',
-    _cyan = '\27[46m',
-    _white = '\27[47m',
-    _default = '\27[49m',
-}
-
-
--- Apply:
-local c
-local use_colors
-local color_mode = os.getenv('TORCH_COLOR')
-if color_mode == 'always' then
-    use_colors = true
-elseif color_mode ~= 'never' then
-    use_colors = editline.tty
-end
-
-if use_colors then
-    c = function(color, txt)
-        return colors[color] .. txt .. colors.none
-    end
-else
-    c = function(color,txt) return txt end
-end
-
--- If no Torch:
-if not torch then
-    torch = {
-        typename = function() return '' end
-    }
-end
-
--- helper
-local function sizestr(x)
-    local strt = {}
-    if _G.torch.typename(x):find('torch.*Storage') then
-        return _G.torch.typename(x):match('torch%.(.+)') .. ' - size: ' .. x:size()
-    end
-    if x:nDimension() == 0 then
-        table.insert(strt, _G.torch.typename(x):match('torch%.(.+)') .. ' - empty')
-    else
-        table.insert(strt, _G.torch.typename(x):match('torch%.(.+)') .. ' - size: ')
-        for i=1,x:nDimension() do
-            table.insert(strt, x:size(i))
-            if i ~= x:nDimension() then
-                table.insert(strt, 'x')
-            end
-        end
-    end
-    return table.concat(strt)
-end
+local base = require('fb.trepl.base')
 
 -- k : name of variable
 -- m : max length
@@ -118,10 +40,8 @@ local function printvar(key,val,m)
     local tp = type(val)
     if tp == 'userdata' then
         tp = torch.typename(val) or ''
-        if tp:find('torch.*Tensor') then
-            tp = sizestr(val)
-        elseif tp:find('torch.*Storage') then
-            tp = sizestr(val)
+        if tp:find('torch.*Tensor') or tp:find('torch.*Storage') then
+            tp = base.sizestr(val, tp)
         else
             tp = tostring(val)
         end
@@ -151,115 +71,6 @@ local function getmaxlen(vars)
     end
     return m
 end
-
--- overload print:
-if not print_old then
-    print_old=print
-end
-
--- a function to colorize output:
-local function colorize(object,nested)
-    -- Apply:
-    local apply = c
-
-    -- Type?
-    if object == nil then
-        return apply('Default', 'nil')
-    elseif type(object) == 'number' then
-        return apply('cyan', tostring(object))
-    elseif type(object) == 'boolean' then
-        return apply('blue', tostring(object))
-    elseif type(object) == 'string' then
-        if nested then
-            return apply('Default','"')..apply('green', object)..apply('Default','"')
-        else
-            return apply('none', object)
-        end
-    elseif type(object) == 'function' then
-        return apply('magenta', tostring(object))
-    elseif type(object) == 'userdata' or type(object) == 'cdata' then
-        local tp = torch.typename(object) or ''
-        if tp:find('torch.*Tensor') then
-            tp = sizestr(object)
-        elseif tp:find('torch.*Storage') then
-            tp = sizestr(object)
-        else
-            tp = tostring(object)
-        end
-        if tp ~= '' then
-            return apply('red', tp)
-        else
-            return apply('red', tostring(object))
-        end
-    elseif type(object) == 'table' then
-        return apply('green', tostring(object))
-    else
-        return apply('none', tostring(object))
-    end
-end
-
--- This is a new recursive, colored print.
-local ndepth = 4
-function print_new(...)
-    local function rawprint(o)
-        io.write(tostring(o or '') .. '\n')
-        io.flush()
-    end
-    local objs = {...}
-    local function printrecursive(obj,depth)
-        local depth = depth or 0
-        local tab = depth*4
-        local line = function(s) for i=1,tab do io.write(' ') end rawprint(s) end
-        line('{')
-        tab = tab+2
-        for k,v in pairs(obj) do
-            if type(v) == 'table' then
-                if depth >= (ndepth-1) or next(v) == nil then
-                    line(tostring(k) .. ' : ' .. colorize(v,true))
-                else
-                    line(tostring(k) .. ' : ') printrecursive(v,depth+1)
-                end
-            else
-                line(tostring(k) .. ' : ' .. colorize(v,true))
-            end
-        end
-        tab = tab-2
-        line('}')
-    end
-    for i = 1,select('#',...) do
-        local obj = select(i,...)
-        if type(obj) ~= 'table' then
-            if type(obj) == 'userdata' or type(obj) == 'cdata' then
-                rawprint(obj)
-            else
-                io.write(colorize(obj) .. '\t')
-                if i == select('#',...) then
-                    rawprint()
-                end
-            end
-        elseif getmetatable(obj) and getmetatable(obj).__tostring then
-            rawprint(obj)
-            --printrecursive(obj)
-        else
-            printrecursive(obj)
-        end
-    end
-end
-
-
-function setprintlevel(n)
-    if n == nil or n < 0 then
-        error('expected number [0,+)')
-    end
-    n = math.floor(n)
-    ndepth = n
-    if ndepth == 0 then
-        print = print_old
-    else
-        print = print_new
-    end
-end
-setprintlevel(5)
 
 -- Import, ala Python
 function import(package, forced)
@@ -351,32 +162,12 @@ function monitor_G(cb)
     })
 end
 
--- Tracekback (error printout)
-local function traceback(message)
-    local tp = type(message)
-    if tp ~= "string" and tp ~= "number" then return message end
-    local debug = _G.debug
-    if type(debug) ~= "table" then return message end
-    local tb = debug.traceback
-    if type(tb) ~= "function" then return message end
-    return tb(coroutine.running(), message)
-end
-
-local error_handler = eh.wrap
-
-if os.getenv('LUA_DEBUG_ON_ERROR') then
-    local debugger = require('fb.debugger')
-    error_handler = function(message)
-        local tb = traceback(message)
-        print(tb)
-        debugger.enter()
-    end
-    debugger.add_skip_func(error_handler)
-end
+local error_handler = base.error_handler
 
 -- Prompt:
 local function make_repl(prompt_prefix)
     prompt_prefix = prompt_prefix or ''
+    local c = base.with_color
     local function prompt(aux)
         local s
         if not aux then
