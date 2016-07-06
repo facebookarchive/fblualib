@@ -145,9 +145,11 @@ local function print_new(...)
             if type(obj) == 'userdata' or type(obj) == 'cdata' then
                 rawprint(obj)
             else
-                io.write(colorize(obj) .. '\t')
+                io.write(colorize(obj))
                 if i == select('#',...) then
                     rawprint()
+                else
+                    io.write('\t')
                 end
             end
         elseif getmetatable(obj) and getmetatable(obj).__tostring then
