@@ -14,11 +14,6 @@ local types = require('fb.debugger.types')
 local editline = require('fb.editline')
 local completer = require('fb.editline.completer')
 
-local ok, trepl = pcall(require, 'fb.trepl')
-if not ok then
-    trepl = nil
-end
-
 local current_hook_mode = ''
 local stepping = false
 local stepping_thread
@@ -321,10 +316,9 @@ function DebugStack:_exec(code)
     end
 end
 
-if trepl then
-    function DebugStack:repl()
-        self:_exec(trepl.make_repl('D'))
-    end
+function DebugStack:repl()
+    local trepl = require 'fb.trepl'
+    self:_exec(trepl.make_repl('D'))
 end
 
 function DebugStack:exec(code)
