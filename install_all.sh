@@ -24,14 +24,18 @@ fi
 
 issue=$(cat /etc/issue)
 extra_packages=
+current=0
 if [[ $issue =~ ^Ubuntu\ 13\.10 ]]; then
     :
 elif [[ $issue =~ ^Ubuntu\ 14 ]]; then
     extra_packages=libiberty-dev
 elif [[ $issue =~ ^Ubuntu\ 15\.04 ]]; then
     extra_packages=libiberty-dev
+elif [[ $issue =~ ^Ubuntu\ 16\.04 ]]; then
+    extra_packages=libiberty-dev
+    current=1
 else
-    echo "Ubuntu 13.10, 14.* or 15.04 required" >&2
+    echo "Ubuntu 13.10, 14.*, 15.04 or 16.04 required" >&2
     exit 1
 fi
 
@@ -81,10 +85,18 @@ sudo apt-get install -y \
 echo
 echo Cloning repositories
 echo
-git clone -b v0.35.0  --depth 1 https://github.com/facebook/folly
-git clone -b v0.24.0  --depth 1 https://github.com/facebook/fbthrift
-git clone -b v1.0 https://github.com/facebook/thpp
-git clone -b v1.0 https://github.com/facebook/fblualib
+if [ $current -eq 1 ]; then
+    git clone --depth 1 https://github.com/facebook/folly
+    git clone --depth 1 https://github.com/facebook/fbthrift
+    git clone https://github.com/facebook/thpp
+    git clone https://github.com/facebook/fblualib
+    git clone https://github.com/facebook/wangle
+else
+    git clone -b v0.35.0  --depth 1 https://github.com/facebook/folly
+    git clone -b v0.24.0  --depth 1 https://github.com/facebook/fbthrift
+    git clone -b v1.0 https://github.com/facebook/thpp
+    git clone -b v1.0 https://github.com/facebook/fblualib
+fi
 
 echo
 echo Building folly
@@ -97,6 +109,17 @@ make
 sudo make install
 sudo ldconfig # reload the lib paths after freshly installed folly. fbthrift needs it.
 
+if [ $current -eq 1 ]; then
+    echo
+    echo Wangle
+    echo
+
+    cd $dir/wangle/wangle
+    cmake .
+    make
+    sudo make install
+fi
+
 echo
 echo Building fbthrift
 echo
@@ -104,6 +127,11 @@ echo
 cd $dir/fbthrift/thrift
 autoreconf -ivf
 ./configure
+if [ $current -eq 1 ]; then
+    pushd lib/cpp2/fatal/internal
+    ln -s folly_dynamic-inl-pre.h folly_dynamic-inl.h
+    popd
+fi
 make
 sudo make install
 
