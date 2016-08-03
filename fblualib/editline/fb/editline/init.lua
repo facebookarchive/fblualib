@@ -363,6 +363,10 @@ function EditLine:add_history(line)
     if line ~= '' then
         util.call_locked(mutex, lib.history, self.history, self.hist_event,
                          H_ENTER, line)
+        if self.config.history_file then
+            util.call_locked(mutex, lib.history, self.history, self.hist_event,
+                             H_SAVE, self.config.history_file)
+        end
     end
 end
 
