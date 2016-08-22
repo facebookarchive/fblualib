@@ -34,11 +34,18 @@ SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=gnu++11")
 
 SET(src
   LuaUtils.cpp
+  Future.cpp
+  Reactor.cpp
+  UserData.cpp
 )
 
 SET(h
   LuaUtils.h
   LuaUtils-inl.h
+  Future.h
+  Reactor.h
+  UserData.h
+  CrossThreadRegistry.h
 )
 
 SET(CMAKE_SHARED_LINKER_FLAGS "-Wl,--no-as-needed")
