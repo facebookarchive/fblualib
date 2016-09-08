@@ -43,4 +43,4 @@ set_target_properties(async_rng
 TARGET_LINK_LIBRARIES(async_rng ${FOLLY_LIBRARIES} fblualib)
 
 install(TARGETS async_rng LIBRARY
-  DESTINATION ${ROCKS_LIBDIR})
+  DESTINATION "${ROCKS_LIBDIR}/fb/torch")

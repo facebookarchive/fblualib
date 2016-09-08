@@ -35,7 +35,7 @@ INCLUDE_DIRECTORIES(
   ${FBLUALIB_INCLUDE_DIR}
 )
 
-SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=gnu++11")
+SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=gnu++14")
 
 SET(base_src
   ChunkedCompression.cpp

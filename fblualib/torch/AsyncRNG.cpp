@@ -14,11 +14,6 @@
 #include <folly/Random.h>
 #include <thpp/Tensor.h>
 
-#ifdef FB_INTERNAL
-#else
-#define LUAOPEN(x) luaopen_async_rng(x)
-#endif
-
 using namespace thpp;
 using namespace fblualib;
 
@@ -542,3 +537,10 @@ extern "C" int LUAOPEN(lua_State* L) {
 
   return 1;
 }
+
+#ifdef FB_INTERNAL
+#else
+extern "C" int luaopen_fb_torch_async_rng(lua_State* L) {
+  LUAOPEN(L);
+}
+#endif
