@@ -34,10 +34,12 @@ FUNCTION(ADD_THRIFT2 src_var fn)
     SET(absroot "${MLI_INCLUDE_OUTPUT_DIR}/${dir}")
     SET(abspath "${absroot}/gen-cpp2")
     FILE(MAKE_DIRECTORY "${absroot}")
-    SET(h_files "${abspath}/${bnwe}_types.h"
+    SET(h_files "${abspath}/${bnwe}_data.h"
+                "${abspath}/${bnwe}_types.h"
                 "${abspath}/${bnwe}_types.tcc"
                 "${abspath}/${bnwe}_constants.h")
-    SET(src_files "${abspath}/${bnwe}_types.cpp"
+    SET(src_files "${abspath}/${bnwe}_data.cpp"
+                  "${abspath}/${bnwe}_types.cpp"
                   "${abspath}/${bnwe}_constants.cpp")
     GET_DIRECTORY_PROPERTY(includes INCLUDE_DIRECTORIES)
     FOREACH(d ${includes})
