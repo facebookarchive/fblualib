@@ -11,9 +11,7 @@
 #include "AtomicVector.h"
 #include <gtest/gtest.h>
 
-#include <stdlib.h>
 #include <unistd.h>
-#include <stdio.h>
 
 #include <iostream>
 #include <unordered_map>
