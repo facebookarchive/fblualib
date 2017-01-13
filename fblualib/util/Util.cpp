@@ -206,7 +206,7 @@ OnceRecord* getOnce(const char* key) {
   try {
     return gOnceRegistry.getOrCreate(
         key,
-        [] { return folly::make_unique<OnceRecord>(); });
+        [] { return std::make_unique<OnceRecord>(); });
   } catch (const std::bad_alloc&) {
     return nullptr;
   }
@@ -231,7 +231,7 @@ std::mutex* getMutex(const char* key) {
   try {
     return gMutexRegistry.getOrCreate(
         key,
-        [] { return folly::make_unique<std::mutex>(); });
+        [] { return std::make_unique<std::mutex>(); });
   } catch (const std::bad_alloc&) {
     return nullptr;
   }

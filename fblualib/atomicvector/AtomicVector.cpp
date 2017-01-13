@@ -153,7 +153,7 @@ template<typename Real>
 int create(lua_State* L) {
   auto name = luaL_checkstring(L, 1);
   auto created = g_vecTab.create(name, [] {
-    return folly::make_unique<TorchAtomicVector<Real>>();
+    return std::make_unique<TorchAtomicVector<Real>>();
   });
   if (created) {
     lua_pushboolean(L, true);

@@ -226,14 +226,14 @@ folly::IOBuf IntMemUserData::doSerialize(
 std::unique_ptr<MemUserData> SerializerTest::makeMemUserData(
     lua_State* L, int objIndex) {
   luaL_checkudata(L, objIndex, kMetatableKey);
-  return folly::make_unique<IntMemUserData>(
+  return std::make_unique<IntMemUserData>(
       *static_cast<const int*>(lua_topointer(L, objIndex)));
 }
 
 std::unique_ptr<MemUserData> SerializerTest::deserializeMemUserData(
     const folly::IOBuf& buf) {
   auto cursor = folly::io::Cursor(&buf);
-  return folly::make_unique<IntMemUserData>(cursor.readBE<int>());
+  return std::make_unique<IntMemUserData>(cursor.readBE<int>());
 }
 
 TEST_P(SerializerTest, Dummy) {

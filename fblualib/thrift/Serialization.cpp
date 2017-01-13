@@ -209,14 +209,14 @@ void registerUserDataCallbacks(
 
   auto factory =
     [ctx] (lua_State* L, int index) -> std::unique_ptr<MemUserData> {
-      return folly::make_unique<IOBufMemUserData>(
+      return std::make_unique<IOBufMemUserData>(
           ctx,
           (ctx->iobSerializer)(L, index));
     };
 
   auto deserializer =
     [ctx] (const folly::IOBuf& buf) -> std::unique_ptr<MemUserData> {
-      return folly::make_unique<IOBufMemUserData>(ctx, buf);
+      return std::make_unique<IOBufMemUserData>(ctx, buf);
     };
 
   registerUserDataCallbacks(
@@ -657,7 +657,7 @@ void Serializer::doSerialize(LuaPrimitiveObject& obj, int index,
         if (options_.localMode) { \
           doSerializeMemUserData( \
               ref, \
-              folly::make_unique<TensorMemUserData<TYPE>>( \
+              std::make_unique<TensorMemUserData<TYPE>>( \
                   std::move(*tensor))); \
         } else { \
           ref.__isset.tensorVal = true; \
@@ -683,7 +683,7 @@ void Serializer::doSerialize(LuaPrimitiveObject& obj, int index,
         if (options_.localMode) { \
           doSerializeMemUserData( \
               ref, \
-              folly::make_unique<StorageMemUserData<TYPE>>( \
+              std::make_unique<StorageMemUserData<TYPE>>( \
                   std::move(*storage))); \
         } else { \
           ref.__isset.storageVal = true; \

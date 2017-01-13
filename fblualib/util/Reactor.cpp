@@ -64,7 +64,7 @@ class Reactor : public folly::Executor {
 
 Reactor::Reactor(lua_State* L)
   : seq_(0),
-    eb_(folly::make_unique<folly::EventBase>()) {
+    eb_(std::make_unique<folly::EventBase>()) {
   lua_pushlightuserdata(L, this);
   lua_createtable(L, 2, 0);
   lua_newtable(L);
