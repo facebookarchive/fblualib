@@ -208,10 +208,10 @@ void registerUserDataCallbacks(
   ctx->iobDeserializer = std::move(iobDeserializer);
 
   auto factory =
-    [ctx] (lua_State* L, int index) -> std::unique_ptr<MemUserData> {
+    [ctx] (lua_State* L2, int index) -> std::unique_ptr<MemUserData> {
       return std::make_unique<IOBufMemUserData>(
           ctx,
-          (ctx->iobSerializer)(L, index));
+          (ctx->iobSerializer)(L2, index));
     };
 
   auto deserializer =
