@@ -344,9 +344,9 @@ class AtomicVector {
     for (int tid = 0; tid < nThreads; tid++) {
       deserThreads.emplace_back([tid, sz, fd, nThreads, this,
                                 &directory, &finalFilePtr] {
-        auto safe_pread = [&](int fd, void* dest, size_t sz, off_t off) {
-          auto retval = pread(fd, dest, sz, off);
-          if (retval != sz) {
+        auto safe_pread = [&](int readFd, void* dest, size_t siz, off_t off) {
+          auto retval = pread(readFd, dest, siz, off);
+          if (retval != siz) {
             auto msg = folly::format("pread failed: {}", strerror(errno));
             throw std::runtime_error(msg.str());
           }
