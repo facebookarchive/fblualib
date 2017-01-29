@@ -16,7 +16,6 @@
 #include <unordered_set>
 #include <glog/logging.h>
 #include <folly/Memory.h>
-#include <folly/Portability.h>
 #include <folly/Random.h>
 #include <folly/String.h>
 #include <folly/ThreadLocal.h>
