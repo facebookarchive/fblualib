@@ -84,7 +84,7 @@ using namespace fblualib::test;
 
 int main(int argc, char *argv[]) {
   testing::InitGoogleTest(&argc, argv);
-  google::ParseCommandLineFlags(&argc, &argv, true);
+  gflags::ParseCommandLineFlags(&argc, &argv, true);
 
   initLuaEmbedding();
   GL = luaNewState();

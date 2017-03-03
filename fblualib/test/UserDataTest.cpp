@@ -292,7 +292,7 @@ const UserDataMethod<TestDerived1> Metatable<TestDerived1>::methods[] = {
 
 int main(int argc, char *argv[]) {
   testing::InitGoogleTest(&argc, argv);
-  google::ParseCommandLineFlags(&argc, &argv, true);
+  gflags::ParseCommandLineFlags(&argc, &argv, true);
 
   initLuaEmbedding();
   GL = luaNewState();
