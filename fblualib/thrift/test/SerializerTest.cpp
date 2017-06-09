@@ -131,7 +131,7 @@ TEST(IOBufSerializerTest, Simple) {
 class SerializerTest : public ::testing::TestWithParam<int> {
  public:
   SerializerTest();
-  void SetUp();
+  void SetUp() override;
 
  protected:
   LuaStatePtr L1p_;
