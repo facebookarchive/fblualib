@@ -178,7 +178,9 @@ class TestDerived1 : public TestObject {
 
   TestDerived1(int xv, int zv) : TestObject(xv), z(zv) { }
 
-  ~TestDerived1() { derivedDestructorCalled = true; }
+  ~TestDerived1() override {
+    derivedDestructorCalled = true;
+  }
 
   int luaFoo(lua_State* L) override;
   int luaBar(lua_State* L);
