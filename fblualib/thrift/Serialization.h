@@ -154,8 +154,7 @@ class MemUserData : public detail::MemUserDataBase {
   folly::StringPiece key() const { return doKey(); }
 
  private:
-  LuaRefObject doSerializeObject(const SerializerOptions& options) const
-    override final;
+  LuaRefObject doSerializeObject(const SerializerOptions& options) const final;
 
   // Implement this: convert from in-memory form to IOBuf
   virtual folly::IOBuf doSerialize(const SerializerOptions& options) const;

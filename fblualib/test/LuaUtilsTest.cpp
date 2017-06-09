@@ -14,8 +14,8 @@ LuaStatePtr GL;
 
 class LuaUtilsTest : public ::testing::Test {
  public:
-  void SetUp();
-  void TearDown();
+  void SetUp() override;
+  void TearDown() override;
 
  protected:
   lua_State* L;
