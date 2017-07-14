@@ -56,8 +56,8 @@ struct LuaPrimitiveObjectKV {
 
 struct LuaTable {
   1: optional list<LuaPrimitiveObject> listKeys,
-  2: optional hash_map<binary, LuaPrimitiveObject> stringKeys,
-  3: optional hash_map<i64, LuaPrimitiveObject> intKeys,
+  2: optional map<binary, LuaPrimitiveObject> (cpp.template = 'std::unordered_map') stringKeys,
+  3: optional map<i64, LuaPrimitiveObject> (cpp.template = 'std::unordered_map') intKeys,
   4: optional LuaPrimitiveObject trueKey,
   5: optional LuaPrimitiveObject falseKey,
   6: optional list<LuaPrimitiveObjectKV> otherKeys,
