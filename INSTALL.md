@@ -13,17 +13,10 @@ This will install [folly](https://github.com/facebook/folly),
 [fbthrift](https://github.com/facebook/fbthrift), [Torch](https://torch.ch),
 [TH++](https://github.com/facebook/thpp), and FBLuaLib.
 
-**NOTE** that this will reinstall Torch, even if you already have it
-installed, and will use [OpenBLAS](http://www.openblas.net/) as the BLAS
-library (which is the default). If you want to build Torch with a different
-BLAS library (such as [MKL](https://software.intel.com/en-us/intel-mkl)), you
-must edit the script.
-
-You should reinstall Torch even if you already have it installed, as older
+**NOTE** You might need to reinstall Torch even if you already have it installed, as older
 versions do not install LuaJIT with Lua 5.2 compatibility. To check, run
 `luajit -e ';;'` -- if you get an error ("unexpected symbol near ';'"),
-then you need to reinstall. If you don't get an error, you may download and
-edit the script to comment out the lines that install Torch.
+then you need to reinstall. 
 
 ## Detailed installation instructions
 
