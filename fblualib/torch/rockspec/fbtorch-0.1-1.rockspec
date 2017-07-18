@@ -7,7 +7,7 @@
 --  of patent rights can be found in the PATENTS file in the same directory.
 --
 
-package = 'fb_torch'
+package = 'fbtorch'
 version = '0.1-1'
 source = {
     url = 'https://github.com/facebook/fblualib',
