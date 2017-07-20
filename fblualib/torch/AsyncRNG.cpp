@@ -402,7 +402,7 @@ using GeneratorFactory = typename AsyncRNG<T>::Generator (*)(lua_State*, int&);
 // threads can produce, reads of up to chunk_size * num_threads random numbers
 // should return immediately.
 int newRNG(lua_State* L,
-           const char* distributionName,
+           const char* /*distributionName*/,
            GeneratorFactory<float> floatGen,
            GeneratorFactory<double> doubleGen) {
   auto typeName = luaGetStringChecked(L, 1);

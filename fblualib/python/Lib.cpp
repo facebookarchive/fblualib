@@ -126,7 +126,7 @@ DEFINE_GET(Dict)
 
 #undef DEFINE_GET
 
-int checkNoRefs(lua_State* L) {
+int checkNoRefs(lua_State* /*L*/) {
   debugCheckNoRefs();
   return 0;
 }

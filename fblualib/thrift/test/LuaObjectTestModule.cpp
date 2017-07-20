@@ -42,7 +42,7 @@ int writeTensor(lua_State* L) {
   return pushAsString(L, make(*p));
 }
 
-LuaObject getFromString(lua_State* L, int index) {
+LuaObject getFromString(lua_State* L, int /*index*/) {
   folly::ByteRange br(luaGetStringChecked(L, 1));
   StringReader reader(&br);
   return cppDecode(reader);
