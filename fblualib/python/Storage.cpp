@@ -13,7 +13,7 @@
 namespace fblualib {
 namespace python {
 
-int initStorage(lua_State* L) {
+int initStorage(lua_State* /*L*/) {
   PythonGuard g;
   PythonStorage<double>::define();
   PythonStorage<float>::define();
