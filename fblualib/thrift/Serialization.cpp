@@ -186,7 +186,8 @@ class IOBufMemUserData : public MemUserData {
   void doLuaPush(lua_State* L) override {
     (ctx_->iobDeserializer)(L, buf_);
   }
-  folly::IOBuf doSerialize(const SerializerOptions& options) const override {
+  folly::IOBuf doSerialize(
+      const SerializerOptions& /*options*/) const override {
     return buf_;
   }
 
@@ -270,12 +271,12 @@ void MemUserDataBase::failNYI(const char* message) const {
       message));
 }
 
-void MemUserDataBase::doLuaPush(lua_State* L) {
+void MemUserDataBase::doLuaPush(lua_State* /*L*/) {
   failNYI(__func__);
 }
 
 LuaRefObject MemUserDataBase::doSerializeObject(
-    const SerializerOptions& options) const {
+    const SerializerOptions& /*options*/) const {
   failNYI(__func__);
 }
 
@@ -291,7 +292,8 @@ LuaRefObject MemUserData::doSerializeObject(
   return obj;
 }
 
-folly::IOBuf MemUserData::doSerialize(const SerializerOptions& options) const {
+folly::IOBuf MemUserData::doSerialize(
+    const SerializerOptions& /*options*/) const {
   failNYI(__func__);
 }
 
@@ -865,7 +867,7 @@ void Serializer::doSerializeTable(LuaTable& obj,
 }
 
 namespace {
-int luaWriterToIOBuf(lua_State* L, const void* p, size_t sz, void* ud) {
+int luaWriterToIOBuf(lua_State* /*L*/, const void* p, size_t sz, void* ud) {
   auto queue = static_cast<folly::IOBufQueue*>(ud);
   queue->append(folly::IOBuf::copyBuffer(p, sz), true);
   return 0;
@@ -1290,7 +1292,7 @@ void Deserializer::doSetTable(int index, int convertedIdx,
 }
 
 namespace {
-const char* luaReaderFromIOBuf(lua_State* L, void* ud, size_t* sz) {
+const char* luaReaderFromIOBuf(lua_State* /*L*/, void* ud, size_t* sz) {
   auto cursor = static_cast<folly::io::Cursor*>(ud);
   auto p = cursor->peek();
   if (p.second == 0) {

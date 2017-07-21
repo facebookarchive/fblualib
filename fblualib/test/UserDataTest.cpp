@@ -66,7 +66,7 @@ int TestObject::luaFoo(lua_State* L) {
   return 1;
 }
 
-int TestObject::luaGC(lua_State* L) {
+int TestObject::luaGC(lua_State* /*L*/) {
   gcCalled = true;
   return 0;
 }

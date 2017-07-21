@@ -45,7 +45,7 @@ struct Refcount<int> {
     m_counts[i - 1]--;
   }
 
-  int get(int i, bool debug = false) const {
+  int get(int i, bool /*debug*/ = false) const {
     _check(i);
     return m_counts[i - 1];
   }
@@ -135,7 +135,7 @@ TEST(AtomicVector, mpAppend) {
     ASSERT_EQ(rc.get(1, true), 0);
     AtomicVector<int> lval;
     const int M = 1000;
-    auto numThreads = mptest([&](int idx) {
+    auto numThreads = mptest([&](int /*idx*/) {
       for (int i = 0; i < M; i++) {
         lval.append(1);
       }
@@ -152,9 +152,7 @@ TEST(AtomicVector, mpRefcount) {
   for (int i = 0; i < 12; i++) {
     assert(rc.get(1, true) == 0);
     AtomicVector<int> lval;
-    auto numThreads = mptest([&](int idx) {
-        lval.append(1);
-    });
+    auto numThreads = mptest([&](int /*idx*/) { lval.append(1); });
     ASSERT_EQ(lval.size(), numThreads);
     assert(rc.get(1) == numThreads);
 

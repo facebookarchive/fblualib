@@ -214,8 +214,8 @@ registerBase(lua_State* L) {
 
 template <class T>
 typename std::enable_if<
-  std::is_same<typename BaseClass<T>::type, void>::value>::type
-registerBase(lua_State* L) { }
+    std::is_same<typename BaseClass<T>::type, void>::value>::type
+registerBase(lua_State* /*L*/) {}
 
 template <class T>
 int doCreateMetatable(lua_State* L) {

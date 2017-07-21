@@ -216,7 +216,7 @@ void IntMemUserData::doLuaPush(lua_State* L) {
 }
 
 folly::IOBuf IntMemUserData::doSerialize(
-    const SerializerOptions& options) const {
+    const SerializerOptions& /*options*/) const {
   folly::IOBuf buf(folly::IOBuf::CREATE, sizeof(int));
   folly::io::Appender appender(&buf, 0);
   appender.writeBE(val_);

@@ -60,7 +60,7 @@ Promise::~Promise() {
   CHECK_EQ(key_, 0) << "Promise destroyed without being fulfilled";
 }
 
-void Promise::validate(lua_State* L) {
+void Promise::validate(lua_State* /*L*/) {
   if (key_ == 0) {
     throw std::logic_error("Promise is empty (already fulfilled)");
   }

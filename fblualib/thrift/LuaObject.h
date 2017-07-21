@@ -137,8 +137,9 @@ inline TableIterator tableBegin(const LuaObject& obj) {
   return tableBegin(obj.value, obj.refs);
 }
 
-inline TableIterator tableEnd(const LuaPrimitiveObject& obj,
-                              const LuaRefList& refs) {
+inline TableIterator tableEnd(
+    const LuaPrimitiveObject& /*obj*/,
+    const LuaRefList& /*refs*/) {
   return TableIterator();
 }
 inline TableIterator tableEnd(const LuaObject& obj) {
